@@ -1,16 +1,10 @@
-import {
-  Row,
-  Col,
-  Select,
-  Button,
-  Popover,
-  Table,
-  Input,
-} from "@douyinfe/semi-ui";
+import { useMemo, useState } from "react";
+import { Row, Col, Select, Button, Popover, Table, Input } from "@douyinfe/semi-ui";
 import {
   IconDeleteStroked,
   IconLoopTextStroked,
   IconMore,
+  IconPlus,
 } from "@douyinfe/semi-icons";
 import {
   Cardinality,
@@ -21,7 +15,11 @@ import {
 import { useDiagram, useLayout, useUndoRedo } from "../../../hooks";
 import i18n from "../../../i18n/i18n";
 import { useTranslation } from "react-i18next";
-import { useMemo, useState } from "react";
+import {
+  getPrimaryRelationshipPair,
+  getRelationshipFieldNames,
+  getRelationshipPairs,
+} from "../../../utils/relationships";
 
 const columns = [
   {
@@ -41,104 +39,162 @@ export default function RelationshipInfo({ data }) {
   const { layout } = useLayout();
   const [editField, setEditField] = useState({});
 
-  const relValues = useMemo(() => {
-    const { fields: startTableFields, name: startTableName } = tables.find(
-      (t) => t.id === data.startTableId,
-    );
-    const { name: startFieldName } = startTableFields.find(
-      (f) => f.id === data.startFieldId,
-    );
-    const { fields: endTableFields, name: endTableName } = tables.find(
-      (t) => t.id === data.endTableId,
-    );
-    const { name: endFieldName } = endTableFields.find(
-      (f) => f.id === data.endFieldId,
-    );
-    return {
-      startTableName,
-      startFieldName,
-      endTableName,
-      endFieldName,
-    };
-  }, [tables, data]);
+  const relValues = useMemo(
+    () => getRelationshipFieldNames(data, tables),
+    [tables, data],
+  );
+  const startTable = tables.find((table) => table.id === data.startTableId);
+  const endTable = tables.find((table) => table.id === data.endTableId);
+  const primaryPair = getPrimaryRelationshipPair(data);
 
-  const swapKeys = () => {
+  const pushRelationshipUndo = (redo, extra, undo = data) => {
     setUndoStack((prev) => [
       ...prev,
       {
         action: Action.EDIT,
         element: ObjectType.RELATIONSHIP,
         rid: data.id,
-        undo: {
-          startTableId: data.startTableId,
-          startFieldId: data.startFieldId,
-          endTableId: data.endTableId,
-          endFieldId: data.endFieldId,
-        },
-        redo: {
-          startTableId: data.endTableId,
-          startFieldId: data.endFieldId,
-          endTableId: data.startTableId,
-          endFieldId: data.startFieldId,
-        },
+        undo,
+        redo,
         message: t("edit_relationship", {
           refName: data.name,
-          extra: "[swap keys]",
+          extra,
         }),
       },
     ]);
     setRedoStack([]);
+  };
+
+  const swapKeys = () => {
+    const swappedPairs = getRelationshipPairs(data).map((pair) => ({
+      startFieldId: pair.endFieldId,
+      endFieldId: pair.startFieldId,
+    }));
+    const swappedPrimary = swappedPairs[0];
+    const nextName =
+      relValues?.primaryPair && relValues?.startTable && relValues?.endTable
+        ? `fk_${relValues.endTable.name}_${relValues.primaryPair.endFieldName}_${relValues.startTable.name}`
+        : data.name;
+
+    pushRelationshipUndo(
+      {
+        startTableId: data.endTableId,
+        startFieldId: swappedPrimary?.startFieldId,
+        endTableId: data.startTableId,
+        endFieldId: swappedPrimary?.endFieldId,
+        columnPairs: swappedPairs,
+        name: nextName,
+      },
+      "[swap keys]",
+    );
 
     updateRelationship(data.id, {
-      name: `fk_${relValues.endTableName}_${relValues.endFieldName}_${relValues.startTableName}`,
+      name: nextName,
       startTableId: data.endTableId,
-      startFieldId: data.endFieldId,
+      startFieldId: swappedPrimary?.startFieldId,
       endTableId: data.startTableId,
-      endFieldId: data.startFieldId,
+      endFieldId: swappedPrimary?.endFieldId,
+      columnPairs: swappedPairs,
     });
+  };
+
+  const updateColumnPairs = (columnPairs) => {
+    const nextPrimary = columnPairs[0];
+    updateRelationship(data.id, {
+      columnPairs,
+      startFieldId: nextPrimary?.startFieldId,
+      endFieldId: nextPrimary?.endFieldId,
+    });
+  };
+
+  const changePair = (index, key, value) => {
+    if (layout.readOnly) return;
+
+    const nextPairs = getRelationshipPairs(data).map((pair, pairIndex) =>
+      pairIndex === index ? { ...pair, [key]: value } : pair,
+    );
+    pushRelationshipUndo(
+      {
+        columnPairs: nextPairs,
+        startFieldId: nextPairs[0]?.startFieldId,
+        endFieldId: nextPairs[0]?.endFieldId,
+      },
+      "[column pairs]",
+      {
+        columnPairs: getRelationshipPairs(data),
+        startFieldId: data.startFieldId,
+        endFieldId: data.endFieldId,
+      },
+    );
+    updateColumnPairs(nextPairs);
+  };
+
+  const addPair = () => {
+    if (layout.readOnly || !startTable?.fields?.length || !endTable?.fields?.length) return;
+
+    const nextPairs = [
+      ...getRelationshipPairs(data),
+      {
+        startFieldId: startTable.fields[0].id,
+        endFieldId: endTable.fields[0].id,
+      },
+    ];
+    pushRelationshipUndo(
+      {
+        columnPairs: nextPairs,
+        startFieldId: nextPairs[0]?.startFieldId,
+        endFieldId: nextPairs[0]?.endFieldId,
+      },
+      "[add column pair]",
+      {
+        columnPairs: getRelationshipPairs(data),
+        startFieldId: data.startFieldId,
+        endFieldId: data.endFieldId,
+      },
+    );
+    updateColumnPairs(nextPairs);
+  };
+
+  const removePair = (index) => {
+    if (layout.readOnly) return;
+
+    const previousPairs = getRelationshipPairs(data);
+    if (previousPairs.length <= 1) return;
+
+    const nextPairs = previousPairs.filter((_, pairIndex) => pairIndex !== index);
+    pushRelationshipUndo(
+      {
+        columnPairs: nextPairs,
+        startFieldId: nextPairs[0]?.startFieldId,
+        endFieldId: nextPairs[0]?.endFieldId,
+      },
+      "[remove column pair]",
+      {
+        columnPairs: previousPairs,
+        startFieldId: data.startFieldId,
+        endFieldId: data.endFieldId,
+      },
+    );
+    updateColumnPairs(nextPairs);
   };
 
   const changeCardinality = (value) => {
     if (layout.readOnly) return;
 
-    setUndoStack((prev) => [
-      ...prev,
-      {
-        action: Action.EDIT,
-        element: ObjectType.RELATIONSHIP,
-        rid: data.id,
-        undo: { cardinality: data.cardinality },
-        redo: { cardinality: value },
-        message: t("edit_relationship", {
-          refName: data.name,
-          extra: "[cardinality]",
-        }),
-      },
-    ]);
-    setRedoStack([]);
+    pushRelationshipUndo({ cardinality: value }, "[cardinality]", {
+      cardinality: data.cardinality,
+    });
     updateRelationship(data.id, { cardinality: value });
   };
 
   const changeConstraint = (key, value) => {
     if (layout.readOnly) return;
 
-    const undoKey = `${key}Constraint`;
-    setUndoStack((prev) => [
-      ...prev,
-      {
-        action: Action.EDIT,
-        element: ObjectType.RELATIONSHIP,
-        rid: data.id,
-        undo: { [undoKey]: data[undoKey] },
-        redo: { [undoKey]: value },
-        message: t("edit_relationship", {
-          refName: data.name,
-          extra: "[constraint]",
-        }),
-      },
-    ]);
-    setRedoStack([]);
-    updateRelationship(data.id, { [undoKey]: value });
+    const constraintKey = `${key}Constraint`;
+    pushRelationshipUndo({ [constraintKey]: value }, "[constraint]", {
+      [constraintKey]: data[constraintKey],
+    });
+    updateRelationship(data.id, { [constraintKey]: value });
   };
 
   return (
@@ -155,33 +211,18 @@ export default function RelationshipInfo({ data }) {
           onFocus={(e) => setEditField({ name: e.target.value })}
           onBlur={(e) => {
             if (e.target.value === editField.name) return;
-            setUndoStack((prev) => [
-              ...prev,
-              {
-                action: Action.EDIT,
-                element: ObjectType.RELATIONSHIP,
-                component: "self",
-                rid: data.id,
-                undo: editField,
-                redo: { name: e.target.value },
-                message: t("edit_relationship", {
-                  refName: e.target.value,
-                  extra: "[name]",
-                }),
-              },
-            ]);
-            setRedoStack([]);
+            pushRelationshipUndo({ name: e.target.value }, "[name]", editField);
           }}
         />
       </div>
       <div className="flex justify-between items-center mb-3">
         <div className="me-3">
           <span className="font-semibold">{t("primary")}: </span>
-          {relValues.endTableName}
+          {relValues?.endTable.name}
         </div>
         <div className="mx-1">
           <span className="font-semibold">{t("foreign")}: </span>
-          {relValues.startTableName}
+          {relValues?.startTable.name}
         </div>
         <div className="ms-1">
           <Popover
@@ -189,13 +230,11 @@ export default function RelationshipInfo({ data }) {
               <div className="p-2 popover-theme">
                 <Table
                   columns={columns}
-                  dataSource={[
-                    {
-                      key: "1",
-                      foreign: `${relValues.startTableName}(${relValues.startFieldName})`,
-                      primary: `${relValues.endTableName}(${relValues.endFieldName})`,
-                    },
-                  ]}
+                  dataSource={(relValues?.pairs ?? []).map((pair, index) => ({
+                    key: `${index}`,
+                    foreign: `${relValues.startTable.name}(${pair.startFieldName})`,
+                    primary: `${relValues.endTable.name}(${pair.endFieldName})`,
+                  }))}
                   pagination={false}
                   size="small"
                   bordered
@@ -220,6 +259,53 @@ export default function RelationshipInfo({ data }) {
           </Popover>
         </div>
       </div>
+
+      <div className="font-semibold my-1">Column pairs:</div>
+      <div className="space-y-2 mb-3">
+        {getRelationshipPairs(data).map((pair, index) => (
+          <div key={`${data.id}_pair_${index}`} className="flex gap-2 items-end">
+            <div className="grow">
+              <div className="text-sm font-semibold mb-1">{t("foreign")}:</div>
+              <Select
+                value={pair.startFieldId}
+                disabled={layout.readOnly}
+                optionList={(startTable?.fields ?? []).map((field) => ({
+                  label: field.name,
+                  value: field.id,
+                }))}
+                onChange={(value) => changePair(index, "startFieldId", value)}
+              />
+            </div>
+            <div className="grow">
+              <div className="text-sm font-semibold mb-1">{t("primary")}:</div>
+              <Select
+                value={pair.endFieldId}
+                disabled={layout.readOnly}
+                optionList={(endTable?.fields ?? []).map((field) => ({
+                  label: field.name,
+                  value: field.id,
+                }))}
+                onChange={(value) => changePair(index, "endFieldId", value)}
+              />
+            </div>
+            <Button
+              type="danger"
+              theme="borderless"
+              icon={<IconDeleteStroked />}
+              disabled={layout.readOnly || getRelationshipPairs(data).length <= 1}
+              onClick={() => removePair(index)}
+            />
+          </div>
+        ))}
+        <Button
+          icon={<IconPlus />}
+          disabled={layout.readOnly || !primaryPair}
+          onClick={addPair}
+        >
+          Add pair
+        </Button>
+      </div>
+
       <div className="font-semibold my-1">{t("cardinality")}:</div>
       <Select
         optionList={Object.values(Cardinality).map((v) => ({
@@ -244,22 +330,11 @@ export default function RelationshipInfo({ data }) {
             readonly={layout.readOnly}
             onBlur={(e) => {
               if (e.target.value === editField.manyLabel) return;
-              setUndoStack((prev) => [
-                ...prev,
-                {
-                  action: Action.EDIT,
-                  element: ObjectType.RELATIONSHIP,
-                  component: "self",
-                  rid: data.id,
-                  undo: editField,
-                  redo: { manyLabel: e.target.value },
-                  message: t("edit_relationship", {
-                    refName: e.target.value,
-                    extra: "[manyLabel]",
-                  }),
-                },
-              ]);
-              setRedoStack([]);
+              pushRelationshipUndo(
+                { manyLabel: e.target.value },
+                "[manyLabel]",
+                editField,
+              );
             }}
           />
         </>

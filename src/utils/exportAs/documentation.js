@@ -1,6 +1,7 @@
 import { dbToTypes } from "../../data/datatypes";
 import { jsonToMermaid } from "./mermaid";
 import { databases } from "../../data/databases";
+import { getRelationshipPairs } from "../relationships";
 
 export function jsonToDocumentation(obj) {
   const documentationSummary = obj.tables
@@ -55,7 +56,11 @@ export function jsonToDocumentation(obj) {
 
   function relationshipByField(table, relationships, fieldId) {
     return relationships
-      .filter((r) => r.startTableId === table && r.startFieldId === fieldId)
+      .filter(
+        (r) =>
+          r.startTableId === table &&
+          getRelationshipPairs(r).some((pair) => pair.startFieldId === fieldId),
+      )
       .map((rel) => rel.name);
   }
 

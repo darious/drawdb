@@ -7,6 +7,7 @@ import {
   tableWidth,
 } from "../data/constants";
 import { calcPath } from "../utils/calcPath";
+import { getPrimaryRelationshipPair } from "../utils/relationships";
 
 function Table({ table, grab }) {
   const [isHovered, setIsHovered] = useState(false);
@@ -78,6 +79,7 @@ function Table({ table, grab }) {
 
 function Relationship({ relationship, tables }) {
   const pathRef = useRef();
+  const primaryPair = getPrimaryRelationshipPair(relationship);
   let start = { x: 0, y: 0 };
   let end = { x: 0, y: 0 };
 
@@ -108,6 +110,8 @@ function Relationship({ relationship, tables }) {
     setRefAquired(true);
   }, []);
 
+  if (!primaryPair) return null;
+
   if (refAquired) {
     const pathLength = pathRef.current.getTotalLength();
     const point1 = pathRef.current.getPointAtLength(length);
@@ -121,8 +125,12 @@ function Relationship({ relationship, tables }) {
       <path
         ref={pathRef}
         d={calcPath({
-          startFieldIndex: relationship.startFieldId,
-          endFieldIndex: relationship.endFieldId,
+          startFieldIndex: tables[relationship.startTableId].fields.findIndex(
+            (field) => field.id === primaryPair?.startFieldId,
+          ),
+          endFieldIndex: tables[relationship.endTableId].fields.findIndex(
+            (field) => field.id === primaryPair?.endFieldId,
+          ),
           startTable: {
             x: tables[relationship.startTableId].x,
             y: tables[relationship.startTableId].y,

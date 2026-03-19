@@ -152,6 +152,17 @@ export const jsonSchema = {
           startFieldId: { type: ["integer", "string"] },
           endTableId: { type: ["integer", "string"] },
           endFieldId: { type: ["integer", "string"] },
+          columnPairs: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                startFieldId: { type: ["integer", "string"] },
+                endFieldId: { type: ["integer", "string"] },
+              },
+              required: ["startFieldId", "endFieldId"],
+            },
+          },
           name: { type: "string" },
           cardinality: { type: "string" },
           updateConstraint: { type: "string" },

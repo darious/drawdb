@@ -630,6 +630,12 @@ export default function Canvas() {
 
     const newRelationship = {
       ...linkingLine,
+      columnPairs: [
+        {
+          startFieldId: linkingLine.startFieldId,
+          endFieldId: hoveredTable.fieldId,
+        },
+      ],
       cardinality,
       endTableId: hoveredTable.tableId,
       endFieldId: hoveredTable.fieldId,

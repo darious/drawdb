@@ -5,6 +5,7 @@ import { useDiagram, useSettings, useLayout, useSelect } from "../../hooks";
 import { useTranslation } from "react-i18next";
 import { SideSheet } from "@douyinfe/semi-ui";
 import RelationshipInfo from "../EditorSidePanel/RelationshipsTab/RelationshipInfo";
+import { getPrimaryRelationshipPair } from "../../utils/relationships";
 
 const labelFontSize = 16;
 
@@ -18,10 +19,12 @@ export default function Relationship({ data, visibleTableIds }) {
   const pathValues = useMemo(() => {
     const startTable = tables.find((t) => t.id === data.startTableId);
     const endTable = tables.find((t) => t.id === data.endTableId);
+    const primaryPair = getPrimaryRelationshipPair(data);
 
     if (
       !startTable ||
       !endTable ||
+      !primaryPair ||
       startTable.hidden ||
       endTable.hidden ||
       !visibleTableIds.has(startTable.id) ||
@@ -31,9 +34,11 @@ export default function Relationship({ data, visibleTableIds }) {
 
     return {
       startFieldIndex: startTable.fields.findIndex(
-        (f) => f.id === data.startFieldId,
+        (f) => f.id === primaryPair.startFieldId,
       ),
-      endFieldIndex: endTable.fields.findIndex((f) => f.id === data.endFieldId),
+      endFieldIndex: endTable.fields.findIndex(
+        (f) => f.id === primaryPair.endFieldId,
+      ),
       startTable: {
         x: startTable.x,
         y: startTable.y,

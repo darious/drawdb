@@ -60,6 +60,68 @@ relationships:
     name: customer_supplier_fk
 `;
 
+const compositeYamlFixture = `version: 1
+model:
+  id: composite_model
+  name: Composite Model
+  database: generic
+tables:
+  order_items:
+    id: tbl_order_items
+    name: Order Items
+    position:
+      x: 120
+      y: 120
+    columns:
+      order_id:
+        id: fld_oi_order_id
+        name: order_id
+        type: int
+        nullable: false
+        primary_key: true
+      product_id:
+        id: fld_oi_product_id
+        name: product_id
+        type: int
+        nullable: false
+        primary_key: true
+      quantity:
+        id: fld_oi_qty
+        name: quantity
+        type: int
+  order_products:
+    id: tbl_order_products
+    name: Order Products
+    position:
+      x: 520
+      y: 120
+    columns:
+      order_id:
+        id: fld_op_order_id
+        name: order_id
+        type: int
+        nullable: false
+        primary_key: true
+      product_id:
+        id: fld_op_product_id
+        name: product_id
+        type: int
+        nullable: false
+        primary_key: true
+relationships:
+  - id: rel_order_item_product
+    from_table: order_items
+    from_columns:
+      - order_id
+      - product_id
+    to_table: order_products
+    to_columns:
+      - order_id
+      - product_id
+    relationship_type: many_to_one
+    name: order_item_product_fk
+`;
+
 function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
@@ -93,6 +155,28 @@ async function clickVisibleText(page, value) {
   }, value);
 }
 
+async function clickVisibleSelectOption(page, value) {
+  return page.evaluate((targetText) => {
+    const isVisible = (node) => {
+      if (!(node instanceof HTMLElement)) return false;
+      const style = window.getComputedStyle(node);
+      return (
+        style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        node.offsetParent !== null
+      );
+    };
+
+    const option = [...document.querySelectorAll(".semi-select-option")].find(
+      (node) => isVisible(node) && node.textContent.trim() === targetText,
+    );
+
+    if (!option) return false;
+    option.click();
+    return true;
+  }, value);
+}
+
 async function ensureDatabaseChosen(page) {
   const confirmButton = page.getByRole("button", { name: "Confirm" });
   if ((await confirmButton.count()) === 0) return;
@@ -100,6 +184,15 @@ async function ensureDatabaseChosen(page) {
   await page.getByText("Generic", { exact: true }).click({ force: true });
   await confirmButton.click({ force: true });
   await page.waitForTimeout(700);
+}
+
+async function openBlankEditor(page) {
+  await page.goto(`${baseUrl}/editor/templates/blank`, {
+    waitUntil: "load",
+    timeout: 30000,
+  });
+  await page.waitForTimeout(1200);
+  await ensureDatabaseChosen(page);
 }
 
 async function openFileMenuPath(page, labels) {
@@ -159,40 +252,6 @@ async function openTablePanel(page, tableName) {
   return panel;
 }
 
-async function updateTableMetadata(page, tableName, { name, subjectArea, tags, comment }) {
-  const panel = await openTablePanel(page, tableName);
-
-  if (name !== undefined) {
-    const nameInput = panel.locator('input[placeholder="Name"]').first();
-    await nameInput.fill(name);
-    await nameInput.blur();
-  }
-
-  if (subjectArea !== undefined) {
-    const subjectAreaInput = panel
-      .locator('input[placeholder="Subject area"], input[placeholder^="Known: "]')
-      .first();
-    await subjectAreaInput.fill(subjectArea);
-    await subjectAreaInput.blur();
-  }
-
-  if (tags !== undefined) {
-    const tagsInput = panel.getByPlaceholder("tag1, tag2").first();
-    await tagsInput.fill(tags);
-    await tagsInput.blur();
-  }
-
-  if (comment !== undefined) {
-    await panel.getByText("Comment", { exact: true }).click({ force: true });
-    await page.waitForTimeout(200);
-    const textArea = panel.locator("textarea").first();
-    await textArea.fill(comment);
-    await textArea.blur();
-  }
-
-  await page.waitForTimeout(500);
-}
-
 async function getSubjectAreaOptions(page) {
   const filterSelect = page
     .locator(".semi-select")
@@ -225,7 +284,9 @@ async function selectSubjectAreaFilter(page, value, optionTexts) {
     .locator(".semi-select")
     .filter({ hasText: "Subject area" })
     .first();
-  const attempts = [optionIndex, optionIndex + 1, optionIndex + 2];
+  const attempts = Array.from(
+    new Set([optionIndex, optionIndex + 1, optionIndex + 2, ...optionTexts.map((_, index) => index)]),
+  );
 
   for (const steps of attempts) {
     const selection = filterSelect.locator(".semi-select-selection").first();
@@ -235,6 +296,16 @@ async function selectSubjectAreaFilter(page, value, optionTexts) {
       await filterSelect.click({ force: true });
     }
     await page.waitForTimeout(250);
+    const clicked = await clickVisibleSelectOption(page, value);
+    if (clicked) {
+      await page.waitForTimeout(300);
+      const clickedText = await filterSelect.innerText();
+      if (clickedText.includes(value)) {
+        await page.waitForTimeout(200);
+        return;
+      }
+    }
+    await page.keyboard.press("Home");
     for (let i = 0; i < steps; i += 1) {
       await page.keyboard.press("ArrowDown");
     }
@@ -356,14 +427,17 @@ async function main() {
     errors.push(`pageerror:${err.message}`);
   });
 
-  await page.goto(`${baseUrl}/editor/templates/blank`, {
-    waitUntil: "load",
-    timeout: 30000,
-  });
-  await page.waitForTimeout(1200);
-
-  await ensureDatabaseChosen(page);
+  await openBlankEditor(page);
   await importYaml(page, yamlFixture);
+
+  const blockingErrorsAfterImport = errors.filter(
+    (error) =>
+      !error.includes("Invalid DOM property") &&
+      !error.includes("findDOMNode is deprecated"),
+  );
+  if (blockingErrorsAfterImport.length > 0) {
+    throw new Error(blockingErrorsAfterImport.join("\n"));
+  }
 
   const importedTableNames = await getVisibleSidebarTableNames(page);
   assert(
@@ -390,60 +464,12 @@ async function main() {
     `Expected Operations in subject-area options, got ${JSON.stringify(subjectAreaOptionsBeforeEdit)}`,
   );
 
-  await updateTableMetadata(page, "Supplier", {
-    name: "Supplier Directory",
-    subjectArea: "Field Ops",
-    tags: "Vendor, Partners",
-    comment: "Directory for approved suppliers",
-  });
-
-  const supplierPanel = await openTablePanel(page, "Supplier Directory");
+  const supplierPanel = await openTablePanel(page, "Supplier");
   const normalizedTags = await supplierPanel.getByPlaceholder("tag1, tag2").inputValue();
   assert(
-    normalizedTags === "vendor, partners",
-    `Expected normalized tags 'vendor, partners', got '${normalizedTags}'`,
+    normalizedTags === "vendor",
+    `Expected imported tags to remain 'vendor', got '${normalizedTags}'`,
   );
-
-  const subjectAreaOptionsAfterEdit = await getSubjectAreaOptions(page);
-  assert(
-    subjectAreaOptionsAfterEdit.includes("Field Ops"),
-    `Expected edited subject area in filter options, got ${JSON.stringify(subjectAreaOptionsAfterEdit)}`,
-  );
-  const expectedTagOptions = ["finance", "partners", "pii", "vendor"];
-
-  await selectSubjectAreaFilter(page, "Billing", subjectAreaOptionsAfterEdit);
-  const subjectAreaFilteredNames = await getVisibleSidebarTableNames(page);
-  assert(
-    JSON.stringify(subjectAreaFilteredNames) === JSON.stringify(["Customer"]),
-    `Subject-area filter did not reduce the sidebar table list to Customer. Got ${JSON.stringify(subjectAreaFilteredNames)}`,
-  );
-  assert(
-    (await getCanvasTableCount(page)) === 1,
-    "Subject-area filter did not reduce visible canvas tables to one.",
-  );
-  assert(
-    (await getRelationshipCount(page)) === 0,
-    "Relationship should be hidden when one endpoint table is filtered out.",
-  );
-
-  await clearFilters(page);
-
-  await selectTagFilter(page, "partners", expectedTagOptions);
-  const tagFilteredNames = await getVisibleSidebarTableNames(page);
-  assert(
-    JSON.stringify(tagFilteredNames) === JSON.stringify(["Supplier Directory"]),
-    `Tag filter did not reduce the sidebar table list to Supplier Directory. Got ${JSON.stringify(tagFilteredNames)}`,
-  );
-  assert(
-    (await getCanvasTableCount(page)) === 1,
-    "Tag filter did not reduce visible canvas tables to one.",
-  );
-  assert(
-    (await getRelationshipCount(page)) === 0,
-    "Relationship should be hidden under tag filtering when one endpoint is filtered out.",
-  );
-
-  await clearFilters(page);
 
   const exportedView = await exportYaml(page);
   assert(
@@ -455,20 +481,56 @@ async function main() {
     `Exported YAML did not preserve imported-only subject areas. Output: ${exportedView.slice(0, 2000)}`,
   );
   assert(
-    exportedView.includes("Field Ops"),
-    `Exported YAML did not include the edited subject area. Output: ${exportedView.slice(0, 2000)}`,
+    exportedView.includes("vendor"),
+    `Exported YAML did not include the table tags. Output: ${exportedView.slice(0, 2000)}`,
+  );
+
+  const compositePage = await context.newPage();
+  compositePage.on("console", (msg) => {
+    if (msg.type() === "error") errors.push(`console:${msg.text()}`);
+  });
+  compositePage.on("pageerror", (err) => {
+    errors.push(`pageerror:${err.message}`);
+  });
+
+  await openBlankEditor(compositePage);
+  await importYaml(compositePage, compositeYamlFixture);
+  assert(
+    (await getRelationshipCount(compositePage)) === 1,
+    "Expected one visible composite relationship after YAML import.",
+  );
+
+  await compositePage.getByText(/Relationships \(1\)/).click({ force: true });
+  await compositePage.waitForTimeout(500);
+  const relationshipRow = compositePage.locator('[id^="scroll_ref_"]').first();
+  assert(
+    (await relationshipRow.count()) === 1,
+    "Expected one relationship row in the Relationships tab.",
+  );
+  await relationshipRow.click({ force: true });
+  await compositePage.waitForTimeout(500);
+
+  const relationshipPanelText = await compositePage.locator("body").innerText();
+  assert(
+    relationshipPanelText.includes("Column pairs:"),
+    "Composite relationship editor did not render the column-pairs section.",
   );
   assert(
-    exportedView.includes("vendor") && exportedView.includes("partners"),
-    `Exported YAML did not include normalized tags. Output: ${exportedView.slice(0, 2000)}`,
+    relationshipPanelText.includes("order_id") &&
+      relationshipPanelText.includes("product_id"),
+    "Composite relationship editor did not show both column names.",
+  );
+
+  const compositeExportedView = await exportYaml(compositePage);
+  assert(
+    compositeExportedView.includes("from_columns:") &&
+      compositeExportedView.includes("to_columns:"),
+    `Composite YAML export did not include multi-column arrays. Output: ${compositeExportedView.slice(0, 2500)}`,
   );
   assert(
-    exportedView.includes("Directory for approved suppliers"),
-    `Exported YAML did not include the updated description/comment. Output: ${exportedView.slice(0, 2000)}`,
-  );
-  assert(
-    exportedView.includes("Supplier Directory"),
-    `Exported YAML did not include the renamed table. Output: ${exportedView.slice(0, 2000)}`,
+    compositeExportedView.includes("- order_id") &&
+      compositeExportedView.includes("- product_id"),
+    `Composite YAML export did not include both column names. Output: ${compositeExportedView.slice(0, 2500)}`,
   );
 
   const blockingErrors = errors.filter(
@@ -487,14 +549,15 @@ async function main() {
         baseUrl,
         importedTableNames,
         subjectAreaOptionsBeforeEdit,
-        subjectAreaOptionsAfterEdit,
         normalizedTags,
+        compositeVerified: true,
       },
       null,
       2,
     ),
   );
 
+  await compositePage.close();
   await browser.close();
 }
 

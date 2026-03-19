@@ -2,6 +2,7 @@ import { parseDefault, escapeQuotes } from "./shared";
 
 import { dbToTypes } from "../../data/datatypes";
 import { DB } from "../../data/constants";
+import { getRelationshipFieldNames } from "../relationships";
 
 function generateAddExtendedPropertySQL(value, level1name, level2name = null) {
   if (!value || value.trim() === "") {
@@ -94,19 +95,16 @@ export function toMSSQL(diagram) {
 
   const referencesSql = diagram.references
     .map((r) => {
-      const startTable = diagram.tables.find((t) => t.id === r.startTableId);
-      const endTable = diagram.tables.find((t) => t.id === r.endTableId);
+      const relFields = getRelationshipFieldNames(r, diagram.tables);
+      if (!relFields) return "";
 
-      if (!startTable || !endTable) return "";
-
-      const startField = startTable.fields.find((f) => f.id === r.startFieldId);
-      const endField = endTable.fields.find((f) => f.id === r.endFieldId);
-
-      if (!startField || !endField) return "";
-
-      return `\nALTER TABLE [${startTable.name}]
-ADD FOREIGN KEY([${startField.name}])
-REFERENCES [${endTable.name}]([${endField.name}])
+      return `\nALTER TABLE [${relFields.startTable.name}]
+ADD FOREIGN KEY(${relFields.pairs
+  .map((pair) => `[${pair.startFieldName}]`)
+  .join(", ")})
+REFERENCES [${relFields.endTable.name}](${relFields.pairs
+  .map((pair) => `[${pair.endFieldName}]`)
+  .join(", ")})
 ON UPDATE ${r.updateConstraint.toUpperCase()} ON DELETE ${r.deleteConstraint.toUpperCase()};
 GO`;
     })

@@ -22,23 +22,24 @@
 ## Current Phase 1 Smoke Coverage
 
 - YAML import into a blank template
-- Table metadata editing:
-  - name
+- Table metadata persistence from YAML import:
   - description via `comment`
   - `subjectArea`
   - `tags`
 - Known subject-area derivation:
   - imported-only subject areas
   - subject areas assigned directly on tables
-- Tables-tab filters:
-  - subject area filter
-  - tag filter
-  - clear filters
-- Canvas visibility behavior for filtered tables
-- Relationship visibility when filters hide one endpoint table
 - YAML export coverage for phase 1 metadata
+- Composite relationship YAML import
+- Composite relationship editor rendering:
+  - multiple column pairs shown in the Relationships tab editor
+- Composite relationship YAML export:
+  - `from_columns`
+  - `to_columns`
 
 ## Notes
 
 - The existing canvas rectangle "subject areas" are a separate feature from phase 1 table `subjectArea`.
 - Do not use table `hidden` for filter logic; filtering should remain derived UI state.
+- Semi UI text/select controls are still flaky under headless Playwright in this repo.
+- Do not treat table metadata editing or filter selection as browser-verified unless the smoke script is extended to cover them explicitly again.

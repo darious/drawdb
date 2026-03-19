@@ -1,5 +1,6 @@
 import { escapeQuotes, exportFieldComment, parseDefault } from "./shared";
 import { dbToTypes } from "../../data/datatypes";
+import { getRelationshipFieldNames } from "../relationships";
 
 export function toPostgres(diagram) {
   const enumStatements = diagram.enums
@@ -87,16 +88,14 @@ export function toPostgres(diagram) {
 
   const foreignKeyStatements = diagram.references
     .map((r) => {
-      const startTable = diagram.tables.find((t) => t.id === r.startTableId);
-      const endTable = diagram.tables.find((t) => t.id === r.endTableId);
-      const startField = startTable?.fields.find(
-        (f) => f.id === r.startFieldId,
-      );
-      const endField = endTable?.fields.find((f) => f.id === r.endFieldId);
+      const relFields = getRelationshipFieldNames(r, diagram.tables);
+      if (!relFields) return "";
 
-      if (!startTable || !endTable || !startField || !endField) return "";
-
-      return `ALTER TABLE "${startTable.name}"\nADD FOREIGN KEY("${startField.name}") REFERENCES "${endTable.name}"("${endField.name}")\nON UPDATE ${r.updateConstraint.toUpperCase()} ON DELETE ${r.deleteConstraint.toUpperCase()};`;
+      return `ALTER TABLE "${relFields.startTable.name}"\nADD FOREIGN KEY(${relFields.pairs
+        .map((pair) => `"${pair.startFieldName}"`)
+        .join(", ")}) REFERENCES "${relFields.endTable.name}"(${relFields.pairs
+        .map((pair) => `"${pair.endFieldName}"`)
+        .join(", ")})\nON UPDATE ${r.updateConstraint.toUpperCase()} ON DELETE ${r.deleteConstraint.toUpperCase()};`;
     })
     .filter(Boolean)
     .join("\n");

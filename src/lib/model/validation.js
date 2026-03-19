@@ -115,15 +115,49 @@ export function validateCanonicalModel(input) {
   const relationshipIds = new Set();
 
   for (const relationship of input.relationships ?? []) {
+    const hasScalarColumns =
+      relationship.from_column !== undefined || relationship.to_column !== undefined;
+    const hasArrayColumns =
+      relationship.from_columns !== undefined || relationship.to_columns !== undefined;
+
     if (
       !relationship.id ||
       !relationship.from_table ||
-      !relationship.from_column ||
       !relationship.to_table ||
-      !relationship.to_column
+      (!hasScalarColumns && !hasArrayColumns)
     ) {
       return fail(
-        "Each relationship must contain id, from_table, from_column, to_table, and to_column.",
+        "Each relationship must contain id, from_table, to_table, and either scalar or array column references.",
+      );
+    }
+
+    if (hasScalarColumns && hasArrayColumns) {
+      return fail(
+        `Relationship '${relationship.id}' cannot mix from_column/to_column with from_columns/to_columns.`,
+      );
+    }
+
+    if (hasArrayColumns) {
+      if (
+        !Array.isArray(relationship.from_columns) ||
+        !Array.isArray(relationship.to_columns)
+      ) {
+        return fail(
+          `Relationship '${relationship.id}' must use arrays for from_columns and to_columns.`,
+        );
+      }
+
+      if (
+        relationship.from_columns.length === 0 ||
+        relationship.from_columns.length !== relationship.to_columns.length
+      ) {
+        return fail(
+          `Relationship '${relationship.id}' must have matching non-empty from_columns and to_columns.`,
+        );
+      }
+    } else if (!relationship.from_column || !relationship.to_column) {
+      return fail(
+        `Relationship '${relationship.id}' must include both from_column and to_column.`,
       );
     }
 
@@ -136,10 +170,20 @@ export function validateCanonicalModel(input) {
       return fail(`Relationship '${relationship.id}' references a table that does not exist.`);
     }
 
-    if (
-      !input.tables[relationship.from_table].columns[relationship.from_column] ||
-      !input.tables[relationship.to_table].columns[relationship.to_column]
-    ) {
+    const fromColumns = Array.isArray(relationship.from_columns)
+      ? relationship.from_columns
+      : [relationship.from_column];
+    const toColumns = Array.isArray(relationship.to_columns)
+      ? relationship.to_columns
+      : [relationship.to_column];
+
+    const hasMissingColumn = fromColumns.some(
+      (fromColumn, index) =>
+        !input.tables[relationship.from_table].columns[fromColumn] ||
+        !input.tables[relationship.to_table].columns[toColumns[index]],
+    );
+
+    if (hasMissingColumn) {
       return fail(`Relationship '${relationship.id}' references a column that does not exist.`);
     }
 
@@ -179,6 +223,15 @@ export function validateCanonicalModel(input) {
       ),
       relationships: (input.relationships ?? []).map((relationship) => ({
         ...relationship,
+        ...(Array.isArray(relationship.from_columns)
+          ? {
+              from_columns: relationship.from_columns,
+              to_columns: relationship.to_columns,
+            }
+          : {
+              from_column: relationship.from_column,
+              to_column: relationship.to_column,
+            }),
         relationship_type:
           relationship.relationship_type ?? Cardinality.MANY_TO_ONE,
       })),

@@ -9,6 +9,11 @@ import {
   normalizeTableMetadata,
   normalizeTags,
 } from "../utils/tableMetadata";
+import {
+  normalizeRelationship,
+  normalizeRelationships,
+  relationshipReferencesField,
+} from "../utils/relationships";
 
 export const DiagramContext = createContext(null);
 
@@ -16,10 +21,17 @@ export default function DiagramContextProvider({ children }) {
   const { t } = useTranslation();
   const [database, setDatabase] = useState(DB.GENERIC);
   const [tables, setTables] = useState([]);
-  const [relationships, setRelationships] = useState([]);
+  const [relationships, setRelationshipsState] = useState([]);
   const { transform } = useTransform();
   const { setUndoStack, setRedoStack } = useUndoRedo();
   const { selectedElement, setSelectedElement } = useSelect();
+
+  const setRelationships = (value) => {
+    setRelationshipsState((prev) => {
+      const nextValue = typeof value === "function" ? value(prev) : value;
+      return normalizeRelationships(nextValue);
+    });
+  };
 
   const addTable = (data, addToHistory = true) => {
     const id = nanoid();
@@ -150,10 +162,7 @@ export default function DiagramContextProvider({ children }) {
     const { fields, name } = tables.find((t) => t.id === tid);
     if (addToHistory) {
       const rels = relationships.reduce((acc, r) => {
-        if (
-          (r.startTableId === tid && r.startFieldId === field.id) ||
-          (r.endTableId === tid && r.endFieldId === field.id)
-        ) {
+        if (relationshipReferencesField(r, tid, field.id)) {
           acc.push(r);
         }
         return acc;
@@ -179,13 +188,7 @@ export default function DiagramContextProvider({ children }) {
       setRedoStack([]);
     }
     setRelationships((prev) =>
-      prev.filter(
-        (e) =>
-          !(
-            (e.startTableId === tid && e.startFieldId === field.id) ||
-            (e.endTableId === tid && e.endFieldId === field.id)
-          ),
-      ),
+      prev.filter((e) => !relationshipReferencesField(e, tid, field.id)),
     );
     updateTable(tid, {
       fields: fields.filter((e) => e.id !== field.id),
@@ -208,12 +211,12 @@ export default function DiagramContextProvider({ children }) {
           },
         ]);
         setRedoStack([]);
-        return [...prev, data];
+        return [...prev, normalizeRelationship(data)];
       });
     } else {
       setRelationships((prev) => {
         const temp = prev.slice();
-        temp.splice(data.index, 0, data.relationship || data);
+        temp.splice(data.index, 0, normalizeRelationship(data.relationship || data));
         return temp;
       });
     }
@@ -243,7 +246,9 @@ export default function DiagramContextProvider({ children }) {
 
   const updateRelationship = (id, updatedValues) => {
     setRelationships((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, ...updatedValues } : t)),
+      prev.map((t) =>
+        t.id === id ? normalizeRelationship({ ...t, ...updatedValues }) : t,
+      ),
     );
   };
 

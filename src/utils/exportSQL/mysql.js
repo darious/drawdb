@@ -2,6 +2,7 @@ import { escapeQuotes, parseDefault } from "./shared";
 
 import { dbToTypes } from "../../data/datatypes";
 import { DB } from "../../data/constants";
+import { getRelationshipFieldNames } from "../relationships";
 
 function parseType(field) {
   let res = field.type;
@@ -64,18 +65,14 @@ export function toMySQL(diagram) {
     )
     .join("\n")}\n${diagram.references
     .map((r) => {
-      const { name: startName, fields: startFields } = diagram.tables.find(
-        (t) => t.id === r.startTableId,
-      );
+      const relFields = getRelationshipFieldNames(r, diagram.tables);
+      if (!relFields) return "";
 
-      const { name: endName, fields: endFields } = diagram.tables.find(
-        (t) => t.id === r.endTableId,
-      );
-      return `ALTER TABLE \`${startName}\`\nADD FOREIGN KEY(\`${
-        startFields.find((f) => f.id === r.startFieldId).name
-      }\`) REFERENCES \`${endName}\`(\`${
-        endFields.find((f) => f.id === r.endFieldId).name
-      }\`)\nON UPDATE ${r.updateConstraint.toUpperCase()} ON DELETE ${r.deleteConstraint.toUpperCase()};`;
+      return `ALTER TABLE \`${relFields.startTable.name}\`\nADD FOREIGN KEY(${relFields.pairs
+        .map((pair) => `\`${pair.startFieldName}\``)
+        .join(", ")}) REFERENCES \`${relFields.endTable.name}\`(${relFields.pairs
+        .map((pair) => `\`${pair.endFieldName}\``)
+        .join(", ")})\nON UPDATE ${r.updateConstraint.toUpperCase()} ON DELETE ${r.deleteConstraint.toUpperCase()};`;
     })
     .join("\n")}`;
 }

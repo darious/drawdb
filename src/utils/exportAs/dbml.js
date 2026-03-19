@@ -3,6 +3,7 @@ import { dbToTypes } from "../../data/datatypes";
 import i18n from "../../i18n/i18n";
 import { escapeQuotes } from "../exportSQL/shared";
 import { isFunction, isKeyword } from "../utils";
+import { getRelationshipFieldNames } from "../relationships";
 
 const IDENT_SAFE_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -109,19 +110,23 @@ function processType(type) {
 
 export function toDBML(diagram) {
   const generateRelString = (rel) => {
-    const { fields: startTableFields, name: startTableName } =
-      diagram.tables.find((t) => t.id === rel.startTableId);
-    const { name: startFieldName } = startTableFields.find(
-      (f) => f.id === rel.startFieldId,
-    );
-    const { fields: endTableFields, name: endTableName } = diagram.tables.find(
-      (t) => t.id === rel.endTableId,
-    );
-    const { name: endFieldName } = endTableFields.find(
-      (f) => f.id === rel.endFieldId,
-    );
+    const relFields = getRelationshipFieldNames(rel, diagram.tables);
+    if (!relFields) return "";
 
-    return `Ref ${quoteIdentifier(rel.name)} {\n\t${quoteIdentifier(startTableName)}.${quoteIdentifier(startFieldName)} ${cardinality(rel)} ${quoteIdentifier(endTableName)}.${quoteIdentifier(endFieldName)} [ delete: ${rel.deleteConstraint.toLowerCase()}, update: ${rel.updateConstraint.toLowerCase()} ]\n}`;
+    const startRef =
+      relFields.pairs.length === 1
+        ? `${quoteIdentifier(relFields.startTable.name)}.${quoteIdentifier(relFields.primaryPair.startFieldName)}`
+        : `${quoteIdentifier(relFields.startTable.name)}.(${relFields.pairs
+            .map((pair) => quoteIdentifier(pair.startFieldName))
+            .join(", ")})`;
+    const endRef =
+      relFields.pairs.length === 1
+        ? `${quoteIdentifier(relFields.endTable.name)}.${quoteIdentifier(relFields.primaryPair.endFieldName)}`
+        : `${quoteIdentifier(relFields.endTable.name)}.(${relFields.pairs
+            .map((pair) => quoteIdentifier(pair.endFieldName))
+            .join(", ")})`;
+
+    return `Ref ${quoteIdentifier(rel.name)} {\n\t${startRef} ${cardinality(rel)} ${endRef} [ delete: ${rel.deleteConstraint.toLowerCase()}, update: ${rel.updateConstraint.toLowerCase()} ]\n}`;
   };
 
   let enumDefinitions = "";
