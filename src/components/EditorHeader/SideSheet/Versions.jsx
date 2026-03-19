@@ -28,6 +28,7 @@ import { loadCache, saveCache } from "../../../utils/cache";
 import Migration from "./Migration";
 import { DB } from "../../../data/constants";
 import { normalizeTablesMetadata } from "../../../utils/tableMetadata";
+import { getSafeLocale } from "../../../i18n/utils/safeLocale";
 
 const LIMIT = 10;
 
@@ -331,7 +332,7 @@ export default function Versions({ open, title, setTitle }) {
                 description={`${t("commited_at")} ${DateTime.fromISO(
                   r.committed_at,
                 )
-                  .setLocale(i18n.language)
+                  .setLocale(getSafeLocale(i18n.language))
                   .toLocaleString(DateTime.DATETIME_MED)}`}
                 icon={
                   r.version === loadingVersion ? (

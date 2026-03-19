@@ -76,6 +76,7 @@ import { exportSQL } from "../../utils/exportSQL";
 import { databases } from "../../data/databases";
 import { jsonToMermaid } from "../../utils/exportAs/mermaid";
 import { isRtl } from "../../i18n/utils/rtl";
+import { getSafeLocale } from "../../i18n/utils/safeLocale";
 import { jsonToDocumentation } from "../../utils/exportAs/documentation";
 import { IdContext } from "../Workspace";
 import { socials } from "../../data/socials";
@@ -779,7 +780,7 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
                 ...recentlyOpenedDiagrams.map((diagram) => ({
                   name: diagram.name,
                   label: DateTime.fromJSDate(new Date(diagram.lastModified))
-                    .setLocale(i18n.language)
+                    .setLocale(getSafeLocale(i18n.language))
                     .toRelative(),
                   function: () => {
                     navigate(`/editor/diagrams/${diagram.diagramId}`);
