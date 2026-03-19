@@ -7,6 +7,7 @@ import {
   useAreas,
   useDiagram,
   useEnums,
+  useMetadata,
   useNotes,
   useTransform,
   useTypes,
@@ -20,6 +21,7 @@ export default function Share({ title, setModal }) {
   const { gistId, setGistId } = useContext(IdContext);
   const [loading, setLoading] = useState(true);
   const { tables, relationships, database } = useDiagram();
+  const { knownSubjectAreas } = useMetadata();
   const { notes } = useNotes();
   const { areas } = useAreas();
   const { types } = useTypes();
@@ -35,6 +37,7 @@ export default function Share({ title, setModal }) {
       relationships: relationships,
       notes: notes,
       subjectAreas: areas,
+      modelSubjectAreas: knownSubjectAreas,
       database: database,
       ...(databases[database].hasTypes && { types: types }),
       ...(databases[database].hasEnums && { enums: enums }),
@@ -46,6 +49,7 @@ export default function Share({ title, setModal }) {
     tables,
     relationships,
     database,
+    knownSubjectAreas,
     title,
     enums,
     types,

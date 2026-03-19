@@ -12,6 +12,7 @@ import { IconDeleteStroked } from "@douyinfe/semi-icons";
 import {
   useDiagram,
   useLayout,
+  useMetadata,
   useSaveState,
   useUndoRedo,
 } from "../../../hooks";
@@ -21,9 +22,14 @@ import IndexDetails from "./IndexDetails";
 import { useTranslation } from "react-i18next";
 import { SortableList } from "../../SortableList/SortableList";
 import { nanoid } from "nanoid";
+import {
+  normalizeSubjectArea,
+  normalizeTags,
+} from "../../../utils/tableMetadata";
 
 export default function TableInfo({ data }) {
   const { tables, database } = useDiagram();
+  const { knownSubjectAreas } = useMetadata();
   const { t } = useTranslation();
   const [indexActiveKey, setIndexActiveKey] = useState("");
   const { layout } = useLayout();
@@ -32,6 +38,7 @@ export default function TableInfo({ data }) {
   const { setSaveState } = useSaveState();
   const [editField, setEditField] = useState({});
   const initialColorRef = useRef(data.color);
+  const tagsInput = Array.isArray(data.tags) ? data.tags.join(", ") : "";
 
   const handleColorPick = (color) => {
     setUndoStack((prev) => {
@@ -105,6 +112,81 @@ export default function TableInfo({ data }) {
                 message: t("edit_table", {
                   tableName: e.target.value,
                   extra: "[name]",
+                }),
+              },
+            ]);
+            setRedoStack([]);
+          }}
+        />
+      </div>
+
+      <div className="mb-2.5">
+        <div className="text-md font-semibold break-keep mb-1">Subject area:</div>
+        <Input
+          value={data.subjectArea ?? ""}
+          placeholder={
+            knownSubjectAreas.length > 0
+              ? `Known: ${knownSubjectAreas.join(", ")}`
+              : "Subject area"
+          }
+          readonly={layout.readOnly}
+          onChange={(value) =>
+            updateTable(data.id, { subjectArea: normalizeSubjectArea(value) })
+          }
+          onFocus={(e) =>
+            setEditField({ subjectArea: normalizeSubjectArea(e.target.value) })
+          }
+          onBlur={(e) => {
+            const nextValue = normalizeSubjectArea(e.target.value);
+            if (nextValue === (editField.subjectArea ?? "")) return;
+            updateTable(data.id, { subjectArea: nextValue });
+            setUndoStack((prev) => [
+              ...prev,
+              {
+                action: Action.EDIT,
+                element: ObjectType.TABLE,
+                component: "self",
+                tid: data.id,
+                undo: { subjectArea: editField.subjectArea ?? "" },
+                redo: { subjectArea: nextValue },
+                message: t("edit_table", {
+                  tableName: data.name,
+                  extra: "[subject area]",
+                }),
+              },
+            ]);
+            setRedoStack([]);
+          }}
+        />
+      </div>
+
+      <div className="mb-2.5">
+        <div className="text-md font-semibold break-keep mb-1">Tags:</div>
+        <Input
+          value={tagsInput}
+          placeholder="tag1, tag2"
+          readonly={layout.readOnly}
+          onChange={(value) =>
+            updateTable(data.id, { tags: normalizeTags(value) })
+          }
+          onFocus={(e) => setEditField({ tags: normalizeTags(e.target.value) })}
+          onBlur={(e) => {
+            const nextValue = normalizeTags(e.target.value);
+            const prevValue = editField.tags ?? [];
+            if (JSON.stringify(nextValue) === JSON.stringify(prevValue)) return;
+            updateTable(data.id, { tags: nextValue });
+            setUndoStack((prev) => [
+              ...prev,
+              {
+                action: Action.EDIT,
+                element: ObjectType.TABLE,
+                component: "self",
+                tid: data.id,
+                undo: { tags: prevValue },
+                redo: { tags: nextValue },
+                message: t("edit_table", {
+                  tableName: data.name,
+                  extra: "[tags]",
                 }),
               },
             ]);

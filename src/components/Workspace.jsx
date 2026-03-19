@@ -7,6 +7,7 @@ import { DB, State } from "../data/constants";
 import { db } from "../data/db";
 import {
   useLayout,
+  useMetadata,
   useSettings,
   useTransform,
   useDiagram,
@@ -32,6 +33,7 @@ import {
 import { get, SHARE_FILENAME } from "../api/gists";
 import { nanoid } from "nanoid";
 import { createUuid } from "../utils/uuid";
+import { normalizeTablesMetadata } from "../utils/tableMetadata";
 
 export const IdContext = createContext({
   gistId: "",
@@ -54,6 +56,8 @@ export default function WorkSpace() {
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [selectedDb, setSelectedDb] = useState("");
   const { layout, setLayout } = useLayout();
+  const { setImportedSubjectAreas, knownSubjectAreas, clearFilters } =
+    useMetadata();
   const { settings } = useSettings();
   const { types, setTypes } = useTypes();
   const { areas, setAreas } = useAreas();
@@ -106,6 +110,7 @@ export default function WorkSpace() {
           pan: transform.pan,
           zoom: transform.zoom,
           loadedFromGistId: loadedFromGistId,
+          modelSubjectAreas: knownSubjectAreas,
           ...(databases[database].hasEnums && { enums: enums }),
           ...(databases[database].hasTypes && { types: types }),
         })
@@ -130,6 +135,7 @@ export default function WorkSpace() {
           pan: transform.pan,
           zoom: transform.zoom,
           loadedFromGistId: loadedFromGistId,
+          modelSubjectAreas: knownSubjectAreas,
           ...(databases[database].hasEnums && { enums: enums }),
           ...(databases[database].hasTypes && { types: types }),
         })
@@ -153,6 +159,7 @@ export default function WorkSpace() {
     enums,
     gistId,
     loadedFromGistId,
+    knownSubjectAreas,
     isDiagram,
     isTemplate,
     loadedDiagramId,
@@ -174,10 +181,12 @@ export default function WorkSpace() {
             setGistId(diagram.gistId);
             setLoadedFromGistId(diagram.loadedFromGistId);
             setTitle(diagram.name);
-            setTables(diagram.tables);
+            const normalizedTables = normalizeTablesMetadata(diagram.tables);
+            setTables(normalizedTables);
             setRelationships(diagram.references);
             setNotes(diagram.notes);
             setAreas(diagram.areas);
+            setImportedSubjectAreas(diagram.modelSubjectAreas ?? []);
             setTransform({ pan: diagram.pan, zoom: diagram.zoom });
             if (databases[database].hasTypes) {
               if (diagram.types) {
@@ -230,10 +239,11 @@ export default function WorkSpace() {
       setGistId(diagram.gistId);
       setLoadedFromGistId(diagram.loadedFromGistId);
       setTitle(diagram.name);
-      setTables(diagram.tables);
+      setTables(normalizeTablesMetadata(diagram.tables));
       setRelationships(diagram.references);
       setAreas(diagram.areas);
       setNotes(diagram.notes);
+      setImportedSubjectAreas(diagram.modelSubjectAreas ?? []);
       setTransform({
         pan: diagram.pan,
         zoom: diagram.zoom,
@@ -279,10 +289,12 @@ export default function WorkSpace() {
           setDatabase(DB.GENERIC);
         }
         setTitle(template.title);
-        setTables(template.tables);
+        const normalizedTables = normalizeTablesMetadata(template.tables);
+        setTables(normalizedTables);
         setRelationships(template.relationships);
         setAreas(template.subjectAreas);
         setNotes(template.notes);
+        setImportedSubjectAreas(template.modelSubjectAreas ?? []);
         setTransform({
           zoom: 1,
           pan: { x: 0, y: 0 },
@@ -329,10 +341,12 @@ export default function WorkSpace() {
         setLoadedFromGistId(shareId);
         setDatabase(parsedDiagram.database);
         setTitle(parsedDiagram.title);
-        setTables(parsedDiagram.tables);
+        const normalizedTables = normalizeTablesMetadata(parsedDiagram.tables);
+        setTables(normalizedTables);
         setRelationships(parsedDiagram.relationships);
         setNotes(parsedDiagram.notes);
         setAreas(parsedDiagram.subjectAreas);
+        setImportedSubjectAreas(parsedDiagram.modelSubjectAreas ?? []);
         setTransform(parsedDiagram.transform);
         if (databases[parsedDiagram.database].hasTypes) {
           if (parsedDiagram.types) {
@@ -405,6 +419,7 @@ export default function WorkSpace() {
     setNotes,
     setTypes,
     setDatabase,
+    setImportedSubjectAreas,
     database,
     setEnums,
     selectedDb,
@@ -460,6 +475,7 @@ export default function WorkSpace() {
   useEffect(() => {
     document.title = "Editor | drawDB";
 
+    clearFilters();
     load();
   }, [load]);
 

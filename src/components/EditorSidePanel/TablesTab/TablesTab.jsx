@@ -1,9 +1,10 @@
-import { Collapse, Button } from "@douyinfe/semi-ui";
+import { Collapse, Button, Select } from "@douyinfe/semi-ui";
 import { IconEyeOpened, IconEyeClosed } from "@douyinfe/semi-icons";
 import { IconPlus } from "@douyinfe/semi-icons";
 import {
   useSelect,
   useDiagram,
+  useMetadata,
   useSaveState,
   useLayout,
   useUndoRedo,
@@ -15,18 +16,60 @@ import { SortableList } from "../../SortableList/SortableList";
 import SearchBar from "./SearchBar";
 import Empty from "../Empty";
 import TableInfo from "./TableInfo";
+import { deriveKnownTags, matchesMetadataFilters } from "../../../utils/tableMetadata";
 
 export default function TablesTab() {
   const { tables, addTable, setTables } = useDiagram();
+  const { filters, setFilters, clearFilters, knownSubjectAreas } = useMetadata();
   const { selectedElement, setSelectedElement } = useSelect();
   const { t } = useTranslation();
   const { layout } = useLayout();
   const { setSaveState } = useSaveState();
+  const knownTags = deriveKnownTags(tables);
+  const filteredTables = tables.filter((table) =>
+    matchesMetadataFilters(table, filters),
+  );
+  const hasActiveFilters =
+    filters.selectedSubjectArea !== "All" || filters.selectedTags.length > 0;
 
   return (
     <>
+      <div className="space-y-2 mb-2">
+        <Select
+          value={filters.selectedSubjectArea}
+          optionList={[
+            { label: "All", value: "All" },
+            ...knownSubjectAreas.map((subjectArea) => ({
+              label: subjectArea,
+              value: subjectArea,
+            })),
+          ]}
+          onChange={(value) =>
+            setFilters((prev) => ({ ...prev, selectedSubjectArea: value }))
+          }
+          insetLabel="Subject area"
+        />
+        <Select
+          multiple
+          value={filters.selectedTags}
+          optionList={knownTags.map((tag) => ({ label: tag, value: tag }))}
+          onChange={(value) =>
+            setFilters((prev) => ({ ...prev, selectedTags: value }))
+          }
+          insetLabel="Tags"
+          placeholder="Filter by tags"
+        />
+        <Button
+          theme="borderless"
+          type="tertiary"
+          onClick={clearFilters}
+          disabled={!hasActiveFilters}
+        >
+          Clear filters
+        </Button>
+      </div>
       <div className="flex gap-2">
-        <SearchBar tables={tables} />
+        <SearchBar tables={filteredTables} />
         <div>
           <Button
             block
@@ -40,6 +83,34 @@ export default function TablesTab() {
       </div>
       {tables.length === 0 ? (
         <Empty title={t("no_tables")} text={t("no_tables_text")} />
+      ) : filteredTables.length === 0 ? (
+        <Empty
+          title="No matching tables"
+          text="No tables match current filters."
+        />
+      ) : hasActiveFilters ? (
+        <Collapse
+          activeKey={
+            selectedElement.open && selectedElement.element === ObjectType.TABLE
+              ? `${selectedElement.id}`
+              : ""
+          }
+          keepDOM={false}
+          lazyRender
+          onChange={(k) =>
+            setSelectedElement((prev) => ({
+              ...prev,
+              open: true,
+              id: k[0],
+              element: ObjectType.TABLE,
+            }))
+          }
+          accordion
+        >
+          {filteredTables.map((table) => (
+            <TableListItem key={table.id} table={table} />
+          ))}
+        </Collapse>
       ) : (
         <Collapse
           activeKey={
@@ -61,7 +132,7 @@ export default function TablesTab() {
         >
           <SortableList
             keyPrefix="tables-tab"
-            items={tables}
+            items={filteredTables}
             onChange={(newTables) => setTables(newTables)}
             afterChange={() => setSaveState(State.SAVING)}
             renderItem={(item) => <TableListItem table={item} />}

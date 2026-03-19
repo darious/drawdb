@@ -19,6 +19,7 @@ import {
   useSettings,
   useTransform,
   useDiagram,
+  useMetadata,
   useUndoRedo,
   useSelect,
   useAreas,
@@ -32,6 +33,7 @@ import { areFieldsCompatible, getTableHeight } from "../../utils/utils";
 import { getRectFromEndpoints, isInsideRect } from "../../utils/rect";
 import { State, noteWidth } from "../../data/constants";
 import { nanoid } from "nanoid";
+import { matchesMetadataFilters } from "../../utils/tableMetadata";
 
 export default function Canvas() {
   const { t } = useTranslation();
@@ -45,6 +47,7 @@ export default function Canvas() {
 
   const { tables, updateTable, relationships, addRelationship, database } =
     useDiagram();
+  const { filters } = useMetadata();
   const { setSaveState } = useSaveState();
   const { areas, updateArea } = useAreas();
   const { notes, updateNote } = useNotes();
@@ -103,6 +106,12 @@ export default function Canvas() {
   // this is used to store the element that is clicked on
   // at the moment, and shouldn't be a part of the state
   let elementPointerDown = null;
+  const visibleTables = tables.filter((table) =>
+    matchesMetadataFilters(table, filters),
+  );
+  const visibleTableIds = new Set(visibleTables.map((table) => table.id));
+  const hasActiveFilters =
+    filters.selectedSubjectArea !== "All" || filters.selectedTags.length > 0;
 
   const isSameElement = (el1, el2) => {
     return el1.id === el2.id && el1.type === el2.type;
@@ -745,9 +754,13 @@ export default function Canvas() {
             />
           ))}
           {relationships.map((e) => (
-            <Relationship key={e.id} data={e} />
+            <Relationship
+              key={e.id}
+              data={e}
+              visibleTableIds={visibleTableIds}
+            />
           ))}
-          {tables.map((table) => (
+          {visibleTables.map((table) => (
             <Table
               key={table.id}
               tableData={table}
@@ -792,6 +805,13 @@ export default function Canvas() {
             />
           )}
         </svg>
+        {hasActiveFilters && visibleTables.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
+            <div className="px-4 py-2 rounded-xl border border-color bg-[rgba(var(--semi-grey-0),0.92)] shadow-lg">
+              No tables match current filters
+            </div>
+          </div>
+        )}
       </div>
       {settings.showDebugCoordinates && (
         <div className="fixed flex flex-col flex-wrap gap-6 bg-[rgba(var(--semi-grey-1),var(--tw-bg-opacity))]/40 border border-color bottom-4 right-4 p-4 rounded-xl backdrop-blur-xs pointer-events-none select-none">

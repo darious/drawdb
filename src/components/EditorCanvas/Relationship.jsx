@@ -8,7 +8,7 @@ import RelationshipInfo from "../EditorSidePanel/RelationshipsTab/RelationshipIn
 
 const labelFontSize = 16;
 
-export default function Relationship({ data }) {
+export default function Relationship({ data, visibleTableIds }) {
   const { settings } = useSettings();
   const { tables } = useDiagram();
   const { layout } = useLayout();
@@ -19,7 +19,14 @@ export default function Relationship({ data }) {
     const startTable = tables.find((t) => t.id === data.startTableId);
     const endTable = tables.find((t) => t.id === data.endTableId);
 
-    if (!startTable || !endTable || startTable.hidden || endTable.hidden)
+    if (
+      !startTable ||
+      !endTable ||
+      startTable.hidden ||
+      endTable.hidden ||
+      !visibleTableIds.has(startTable.id) ||
+      !visibleTableIds.has(endTable.id)
+    )
       return null;
 
     return {
@@ -34,7 +41,7 @@ export default function Relationship({ data }) {
       },
       endTable: { x: endTable.x, y: endTable.y, comment: endTable.comment },
     };
-  }, [tables, data]);
+  }, [tables, data, visibleTableIds]);
 
   const pathRef = useRef();
   const labelRef = useRef();

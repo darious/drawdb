@@ -38,6 +38,11 @@ export const tableSchema = {
       },
     },
     comment: { type: "string" },
+    tags: {
+      type: "array",
+      items: { type: "string" },
+    },
+    subjectArea: { type: "string" },
     locked: { type: "boolean" },
     hidden: { type: "boolean" },
     indices: {
@@ -184,6 +189,10 @@ export const jsonSchema = {
     },
     title: { type: "string" },
     database: { type: "string" },
+    modelSubjectAreas: {
+      type: "array",
+      items: { type: "string" },
+    },
   },
   required: ["tables", "relationships", "notes", "subjectAreas"],
 };

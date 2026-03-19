@@ -4,6 +4,11 @@ import { useTransform, useUndoRedo, useSelect } from "../hooks";
 import { Toast } from "@douyinfe/semi-ui";
 import { useTranslation } from "react-i18next";
 import { nanoid } from "nanoid";
+import {
+  normalizeSubjectArea,
+  normalizeTableMetadata,
+  normalizeTags,
+} from "../utils/tableMetadata";
 
 export const DiagramContext = createContext(null);
 
@@ -18,7 +23,7 @@ export default function DiagramContextProvider({ children }) {
 
   const addTable = (data, addToHistory = true) => {
     const id = nanoid();
-    const newTable = {
+    const newTable = normalizeTableMetadata({
       id,
       name: `table_${id}`,
       x: transform.pan.x,
@@ -41,11 +46,15 @@ export default function DiagramContextProvider({ children }) {
       comment: "",
       indices: [],
       color: defaultBlue,
-    };
+    });
     if (data) {
       setTables((prev) => {
         const temp = prev.slice();
-        temp.splice(data.index || tables.length, 0, data.table);
+        temp.splice(
+          data.index || tables.length,
+          0,
+          normalizeTableMetadata(data.table),
+        );
         return temp;
       });
     } else {
@@ -106,8 +115,18 @@ export default function DiagramContextProvider({ children }) {
   };
 
   const updateTable = (id, updatedValues) => {
+    const normalizedValues = {
+      ...updatedValues,
+      ...(Object.hasOwn(updatedValues, "tags") && {
+        tags: normalizeTags(updatedValues.tags),
+      }),
+      ...(Object.hasOwn(updatedValues, "subjectArea") && {
+        subjectArea: normalizeSubjectArea(updatedValues.subjectArea),
+      }),
+    };
+
     setTables((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, ...updatedValues } : t)),
+      prev.map((t) => (t.id === id ? { ...t, ...normalizedValues } : t)),
     );
   };
 

@@ -18,6 +18,7 @@ import {
   useDiagram,
   useEnums,
   useLayout,
+  useMetadata,
   useNotes,
   useTransform,
   useTypes,
@@ -26,12 +27,14 @@ import { databases } from "../../../data/databases";
 import { loadCache, saveCache } from "../../../utils/cache";
 import Migration from "./Migration";
 import { DB } from "../../../data/constants";
+import { normalizeTablesMetadata } from "../../../utils/tableMetadata";
 
 const LIMIT = 10;
 
 export default function Versions({ open, title, setTitle }) {
   const { gistId, setGistId, version, setVersion } = useContext(IdContext);
   const { areas, setAreas } = useAreas();
+  const { knownSubjectAreas, setImportedSubjectAreas } = useMetadata();
   const { setLayout } = useLayout();
   const { database, tables, relationships, setTables, setRelationships } =
     useDiagram();
@@ -58,6 +61,7 @@ export default function Versions({ open, title, setTitle }) {
       relationships: relationships,
       notes: notes,
       subjectAreas: areas,
+      modelSubjectAreas: knownSubjectAreas,
       database: database,
       ...(databases[database].hasTypes && { types: types }),
       ...(databases[database].hasEnums && { enums: enums }),
@@ -69,6 +73,7 @@ export default function Versions({ open, title, setTitle }) {
     tables,
     relationships,
     database,
+    knownSubjectAreas,
     title,
     enums,
     types,
@@ -95,11 +100,12 @@ export default function Versions({ open, title, setTitle }) {
         const content = version.data.files[VERSION_FILENAME].content;
         const parsedDiagram = JSON.parse(content);
 
-        setTables(parsedDiagram.tables);
+        setTables(normalizeTablesMetadata(parsedDiagram.tables));
         setRelationships(parsedDiagram.relationships);
         setAreas(parsedDiagram.subjectAreas);
         setNotes(parsedDiagram.notes);
         setTitle(parsedDiagram.title);
+        setImportedSubjectAreas(parsedDiagram.modelSubjectAreas ?? []);
 
         if (databases[database].hasTypes) {
           setTypes(parsedDiagram.types);
@@ -127,6 +133,7 @@ export default function Versions({ open, title, setTitle }) {
       setTypes,
       setEnums,
       setTitle,
+      setImportedSubjectAreas,
     ],
   );
 
@@ -192,6 +199,7 @@ export default function Versions({ open, title, setTitle }) {
       relationships: relationships,
       notes: notes,
       subjectAreas: areas,
+      modelSubjectAreas: knownSubjectAreas,
       database: database,
       ...(databases[database].hasTypes && { types: types }),
       ...(databases[database].hasEnums && { enums: enums }),

@@ -52,6 +52,7 @@ import { areaSchema, noteSchema, tableSchema } from "../../data/schemas";
 import { db } from "../../data/db";
 import {
   useLayout,
+  useMetadata,
   useSettings,
   useTransform,
   useDiagram,
@@ -102,6 +103,7 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
   const [importFrom, setImportFrom] = useState(IMPORT_FROM.JSON);
   const { saveState, setSaveState } = useSaveState();
   const { layout, setLayout } = useLayout();
+  const { knownSubjectAreas } = useMetadata();
   const { settings, setSettings } = useSettings();
   const {
     relationships,
@@ -818,6 +820,7 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
               relationships: relationships,
               notes: notes,
               subjectAreas: areas,
+              modelSubjectAreas: knownSubjectAreas,
               custom: 1,
               templateId: createUuid(),
               ...(databases[database].hasEnums && { enums: enums }),

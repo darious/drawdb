@@ -1,4 +1,5 @@
 import LayoutContextProvider from "../context/LayoutContext";
+import MetadataContextProvider from "../context/MetadataContext";
 import TransformContextProvider from "../context/TransformContext";
 import TablesContextProvider from "../context/DiagramContext";
 import UndoRedoContextProvider from "../context/UndoRedoContext";
@@ -9,7 +10,7 @@ import TypesContextProvider from "../context/TypesContext";
 import SaveStateContextProvider from "../context/SaveStateContext";
 import EnumsContextProvider from "../context/EnumsContext";
 import WorkSpace from "../components/Workspace";
-import { useThemedPage } from "../hooks";
+import { useDiagram, useThemedPage } from "../hooks";
 
 export default function Editor() {
   useThemedPage();
@@ -24,9 +25,7 @@ export default function Editor() {
                 <TypesContextProvider>
                   <EnumsContextProvider>
                     <TablesContextProvider>
-                      <SaveStateContextProvider>
-                        <WorkSpace />
-                      </SaveStateContextProvider>
+                      <MetadataBridge />
                     </TablesContextProvider>
                   </EnumsContextProvider>
                 </TypesContextProvider>
@@ -36,5 +35,17 @@ export default function Editor() {
         </UndoRedoContextProvider>
       </TransformContextProvider>
     </LayoutContextProvider>
+  );
+}
+
+function MetadataBridge() {
+  const { tables } = useDiagram();
+
+  return (
+    <MetadataContextProvider tables={tables}>
+      <SaveStateContextProvider>
+        <WorkSpace />
+      </SaveStateContextProvider>
+    </MetadataContextProvider>
   );
 }
