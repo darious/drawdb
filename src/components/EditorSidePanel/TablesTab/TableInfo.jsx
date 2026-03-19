@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Collapse,
   Input,
@@ -37,8 +37,13 @@ export default function TableInfo({ data }) {
   const { setUndoStack, setRedoStack } = useUndoRedo();
   const { setSaveState } = useSaveState();
   const [editField, setEditField] = useState({});
+  const [tagsDraft, setTagsDraft] = useState("");
   const initialColorRef = useRef(data.color);
   const tagsInput = Array.isArray(data.tags) ? data.tags.join(", ") : "";
+
+  useEffect(() => {
+    setTagsDraft(tagsInput);
+  }, [tagsInput]);
 
   const handleColorPick = (color) => {
     setUndoStack((prev) => {
@@ -163,16 +168,15 @@ export default function TableInfo({ data }) {
       <div className="mb-2.5">
         <div className="text-md font-semibold break-keep mb-1">Tags:</div>
         <Input
-          value={tagsInput}
+          value={tagsDraft}
           placeholder="tag1, tag2"
           readonly={layout.readOnly}
-          onChange={(value) =>
-            updateTable(data.id, { tags: normalizeTags(value) })
-          }
-          onFocus={(e) => setEditField({ tags: normalizeTags(e.target.value) })}
+          onChange={(value) => setTagsDraft(value)}
+          onFocus={() => setEditField({ tags: data.tags ?? [] })}
           onBlur={(e) => {
             const nextValue = normalizeTags(e.target.value);
             const prevValue = editField.tags ?? [];
+            setTagsDraft(nextValue.join(", "));
             if (JSON.stringify(nextValue) === JSON.stringify(prevValue)) return;
             updateTable(data.id, { tags: nextValue });
             setUndoStack((prev) => [

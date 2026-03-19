@@ -115,4 +115,5 @@ export const DB = {
 export const IMPORT_FROM = {
   JSON: 0,
   DBML: 1,
+  YAML: 2,
 };

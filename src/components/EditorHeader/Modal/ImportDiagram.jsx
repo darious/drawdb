@@ -13,6 +13,7 @@ import {
 } from "../../../hooks";
 import { useTranslation } from "react-i18next";
 import { fromDBML } from "../../../utils/importFrom/dbml";
+import { importDiagramFromYaml } from "../../../lib/model/yaml-import";
 
 export default function ImportDiagram({
   setImportData,
@@ -137,12 +138,42 @@ export default function ImportDiagram({
     }
   };
 
+  const loadYamlData = (e) => {
+    const result = importDiagramFromYaml(e.target.result);
+
+    if (!result.ok) {
+      setError({
+        type: STATUS.ERROR,
+        message: result.message,
+      });
+      return;
+    }
+
+    const yamlObject = result.value;
+
+    setImportData(yamlObject);
+    if (diagramIsEmpty()) {
+      setError({
+        type: STATUS.OK,
+        message: "Everything looks good. You can now import.",
+      });
+    } else {
+      setError({
+        type: STATUS.WARNING,
+        message:
+          "The current diagram is not empty. Importing a new diagram will overwrite the current changes.",
+      });
+    }
+  };
+
   const getAcceptableFileTypes = () => {
     switch (importFrom) {
       case IMPORT_FROM.JSON:
         return "application/json,.ddb";
       case IMPORT_FROM.DBML:
         return ".dbml";
+      case IMPORT_FROM.YAML:
+        return ".yaml,.yml,text/yaml,text/x-yaml,application/yaml";
       default:
         return "";
     }
@@ -154,6 +185,8 @@ export default function ImportDiagram({
         return `${t("supported_types")} JSON, DDB`;
       case IMPORT_FROM.DBML:
         return `${t("supported_types")} DBML`;
+      case IMPORT_FROM.YAML:
+        return `${t("supported_types")} YAML, YML`;
       default:
         return "";
     }
@@ -172,6 +205,7 @@ export default function ImportDiagram({
           reader.onload = async (e) => {
             if (importFrom == IMPORT_FROM.JSON) loadJsonData(f, e);
             if (importFrom == IMPORT_FROM.DBML) loadDBMLData(e);
+            if (importFrom == IMPORT_FROM.YAML) loadYamlData(e);
           };
           reader.readAsText(f);
 

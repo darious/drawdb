@@ -87,6 +87,7 @@ import { getTableHeight } from "../../utils/utils";
 import { deleteFromCache, STORAGE_KEY } from "../../utils/cache";
 import { useLiveQuery } from "dexie-react-hooks";
 import { DateTime } from "luxon";
+import { exportDiagramAsYaml } from "../../lib/model/yaml-export";
 
 export default function ControlPanel({ title, setTitle, lastSaved }) {
   const { id: diagramId } = useParams();
@@ -881,6 +882,14 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
             name: "DBML",
             disabled: layout.readOnly,
           },
+          {
+            function: () => {
+              setModal(MODAL.IMPORT);
+              setImportFrom(IMPORT_FROM.YAML);
+            },
+            name: "YAML",
+            disabled: layout.readOnly,
+          },
         ],
       },
       import_from_source: {
@@ -1139,6 +1148,24 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
                 ...prev,
                 data: result,
                 extension: "json",
+              }));
+            },
+          },
+          {
+            name: "YAML",
+            function: () => {
+              setModal(MODAL.CODE);
+              const result = exportDiagramAsYaml({
+                title,
+                database,
+                knownSubjectAreas,
+                tables,
+                relationships,
+              });
+              setExportData((prev) => ({
+                ...prev,
+                data: result,
+                extension: "yml",
               }));
             },
           },

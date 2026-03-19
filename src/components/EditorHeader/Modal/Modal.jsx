@@ -10,6 +10,7 @@ import {
   useAreas,
   useDiagram,
   useEnums,
+  useMetadata,
   useNotes,
   useSettings,
   useTransform,
@@ -39,6 +40,7 @@ const extensionToLanguage = {
   sql: "sql",
   dbml: "dbml",
   json: "json",
+  yml: "yaml",
 };
 
 export default function Modal({
@@ -52,7 +54,8 @@ export default function Modal({
   importFrom,
 }) {
   const { t, i18n } = useTranslation();
-  const { setTables, setRelationships, database } = useDiagram();
+  const { setTables, setRelationships, database, setDatabase } = useDiagram();
+  const { setImportedSubjectAreas } = useMetadata();
   const { setNotes } = useNotes();
   const { setAreas } = useAreas();
   const { setTypes } = useTypes();
@@ -80,19 +83,19 @@ export default function Modal({
   const navigate = useNavigate();
 
   const overwriteDiagram = () => {
+    const targetDatabase = importData.database ?? database;
+
+    setDatabase(targetDatabase);
     setTables(importData.tables);
     setRelationships(importData.relationships);
     setAreas(importData.subjectAreas ?? []);
     setNotes(importData.notes ?? []);
+    setImportedSubjectAreas(importData.modelSubjectAreas ?? []);
     if (importData.title) {
       setTitle(importData.title);
     }
-    if (databases[database].hasEnums && importData.enums) {
-      setEnums(importData.enums);
-    }
-    if (databases[database].hasTypes && importData.types) {
-      setTypes(importData.types);
-    }
+    setEnums(databases[targetDatabase].hasEnums ? importData.enums ?? [] : []);
+    setTypes(databases[targetDatabase].hasTypes ? importData.types ?? [] : []);
   };
 
   const parseSQLAndLoadDiagram = () => {
