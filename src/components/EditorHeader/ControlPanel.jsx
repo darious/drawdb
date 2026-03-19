@@ -78,6 +78,7 @@ import { isRtl } from "../../i18n/utils/rtl";
 import { jsonToDocumentation } from "../../utils/exportAs/documentation";
 import { IdContext } from "../Workspace";
 import { socials } from "../../data/socials";
+import { createUuid } from "../../utils/uuid";
 import { toDBML } from "../../utils/exportAs/dbml";
 import { exportSavedData } from "../../utils/exportSavedData";
 import { nanoid } from "nanoid";
@@ -818,7 +819,7 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
               notes: notes,
               subjectAreas: areas,
               custom: 1,
-              templateId: crypto.randomUUID(),
+              templateId: createUuid(),
               ...(databases[database].hasEnums && { enums: enums }),
               ...(databases[database].hasTypes && { types: types }),
             })
