@@ -1,4 +1,10 @@
-import { useState, useEffect, useCallback, createContext } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  createContext,
+  useRef,
+} from "react";
 import ControlPanel from "./EditorHeader/ControlPanel";
 import Canvas from "./EditorCanvas/Canvas";
 import { CanvasContextProvider } from "../context/CanvasContext";
@@ -44,7 +50,38 @@ export const IdContext = createContext({
 
 const SIDEPANEL_MIN_WIDTH = 384;
 
+function buildDiagramSnapshot({
+  database,
+  title,
+  gistId = "",
+  loadedFromGistId = "",
+  tables = [],
+  relationships = [],
+  notes = [],
+  areas = [],
+  types = [],
+  enums = [],
+  knownSubjectAreas = [],
+  transform,
+}) {
+  return JSON.stringify({
+    database,
+    title,
+    gistId,
+    loadedFromGistId,
+    tables,
+    relationships,
+    notes,
+    areas,
+    types,
+    enums,
+    knownSubjectAreas,
+    transform,
+  });
+}
+
 export default function WorkSpace() {
+  const lastSavedSnapshotRef = useRef(null);
   const [gistId, setGistId] = useState("");
   const [version, setVersion] = useState("");
   const [loadedFromGistId, setLoadedFromGistId] = useState("");
@@ -56,8 +93,7 @@ export default function WorkSpace() {
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [selectedDb, setSelectedDb] = useState("");
   const { layout, setLayout } = useLayout();
-  const { setImportedSubjectAreas, knownSubjectAreas, clearFilters } =
-    useMetadata();
+  const { setImportedSubjectAreas, knownSubjectAreas } = useMetadata();
   const { settings } = useSettings();
   const { types, setTypes } = useTypes();
   const { areas, setAreas } = useAreas();
@@ -73,12 +109,13 @@ export default function WorkSpace() {
     database,
     setDatabase,
   } = useDiagram();
-  const { undoStack, redoStack, setUndoStack, setRedoStack } = useUndoRedo();
+  const { setUndoStack, setRedoStack } = useUndoRedo();
   const { t, i18n } = useTranslation();
-  let [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { id: loadedDiagramId } = useParams();
-  const isDiagram = useMatch("/editor/diagrams/:id");
-  const isTemplate = useMatch("/editor/templates/:id");
+  const isDiagram = Boolean(useMatch("/editor/diagrams/:id"));
+  const isTemplate = Boolean(useMatch("/editor/templates/:id"));
+  const shareId = searchParams.get("shareId");
 
   const navigate = useNavigate();
 
@@ -88,10 +125,51 @@ export default function WorkSpace() {
     if (w > SIDEPANEL_MIN_WIDTH) setWidth(w);
   };
 
+  const serializeDiagram = useCallback(
+    (overrides = {}) =>
+      buildDiagramSnapshot({
+        database: overrides.database ?? database,
+        title: overrides.title ?? title,
+        gistId: overrides.gistId ?? gistId ?? "",
+        loadedFromGistId:
+          overrides.loadedFromGistId ?? loadedFromGistId ?? "",
+        tables: overrides.tables ?? tables,
+        relationships: overrides.relationships ?? relationships,
+        notes: overrides.notes ?? notes,
+        areas: overrides.areas ?? areas,
+        types: overrides.types ?? types,
+        enums: overrides.enums ?? enums,
+        knownSubjectAreas:
+          overrides.knownSubjectAreas ?? knownSubjectAreas ?? [],
+        transform: overrides.transform ?? transform,
+      }),
+    [
+      areas,
+      database,
+      enums,
+      gistId,
+      knownSubjectAreas,
+      loadedFromGistId,
+      notes,
+      relationships,
+      tables,
+      title,
+      transform,
+      types,
+    ],
+  );
+
+  useEffect(() => {
+    if (lastSavedSnapshotRef.current === null) {
+      lastSavedSnapshotRef.current = serializeDiagram();
+    }
+  }, [serializeDiagram]);
+
   const save = useCallback(async () => {
     if (searchParams.has("shareId")) {
-      searchParams.delete("shareId");
-      setSearchParams(searchParams, { replace: true });
+      const nextSearchParams = new URLSearchParams(searchParams);
+      nextSearchParams.delete("shareId");
+      setSearchParams(nextSearchParams, { replace: true });
     }
 
     if (isTemplate || (!loadedDiagramId && !isTemplate && !isDiagram)) {
@@ -115,9 +193,11 @@ export default function WorkSpace() {
           ...(databases[database].hasTypes && { types: types }),
         })
         .then(() => {
+          const savedAt = new Date().toLocaleString();
+          lastSavedSnapshotRef.current = serializeDiagram();
           navigate(`/editor/diagrams/${diagramId}`, { replace: true });
           setSaveState(State.SAVED);
-          setLastSaved(new Date().toLocaleString());
+          setLastSaved(savedAt);
         });
     } else {
       await db.diagrams
@@ -140,17 +220,20 @@ export default function WorkSpace() {
           ...(databases[database].hasTypes && { types: types }),
         })
         .then(() => {
+          const savedAt = new Date().toLocaleString();
+          lastSavedSnapshotRef.current = serializeDiagram();
           setSaveState(State.SAVED);
-          setLastSaved(new Date().toLocaleString());
+          setLastSaved(savedAt);
         });
     }
   }, [
+    areas,
     searchParams,
+    serializeDiagram,
     setSearchParams,
     tables,
     relationships,
     notes,
-    areas,
     types,
     title,
     transform,
@@ -173,25 +256,11 @@ export default function WorkSpace() {
         .last()
         .then((diagram) => {
           if (diagram) {
-            if (diagram.database) {
-              setDatabase(diagram.database);
-            } else {
-              setDatabase(DB.GENERIC);
-            }
-            setGistId(diagram.gistId);
-            setLoadedFromGistId(diagram.loadedFromGistId);
-            setTitle(diagram.name);
+            const diagramDatabase = diagram.database || DB.GENERIC;
             const normalizedTables = normalizeTablesMetadata(diagram.tables);
-            setTables(normalizedTables);
-            setRelationships(diagram.references);
-            setNotes(diagram.notes);
-            setAreas(diagram.areas);
-            setImportedSubjectAreas(diagram.modelSubjectAreas ?? []);
-            setTransform({ pan: diagram.pan, zoom: diagram.zoom });
-            if (databases[database].hasTypes) {
-              if (diagram.types) {
-                setTypes(
-                  diagram.types.map((t) =>
+            const nextTypes =
+              databases[diagramDatabase].hasTypes && diagram.types
+                ? diagram.types.map((t) =>
                     t.id
                       ? t
                       : {
@@ -201,24 +270,54 @@ export default function WorkSpace() {
                             f.id ? f : { ...f, id: nanoid() },
                           ),
                         },
-                  ),
-                );
-              } else {
-                setTypes([]);
-              }
-            }
-            if (databases[database].hasEnums) {
-              setEnums(
-                diagram.enums.map((e) =>
-                  !e.id ? { ...e, id: nanoid() } : e,
-                ) ?? [],
-              );
-            }
+                  )
+                : [];
+            const nextEnums =
+              databases[diagramDatabase].hasEnums && diagram.enums
+                ? diagram.enums.map((e) =>
+                    !e.id ? { ...e, id: nanoid() } : e,
+                  )
+                : [];
+
+            setDatabase(diagramDatabase);
+            setGistId(diagram.gistId);
+            setLoadedFromGistId(diagram.loadedFromGistId);
+            setTitle(diagram.name);
+            setTables(normalizedTables);
+            setRelationships(diagram.references);
+            setNotes(diagram.notes);
+            setAreas(diagram.areas);
+            setImportedSubjectAreas(diagram.modelSubjectAreas ?? []);
+            setTransform({ pan: diagram.pan, zoom: diagram.zoom });
+            setTypes(nextTypes);
+            setEnums(nextEnums);
+            setLastSaved(
+              diagram.lastModified
+                ? new Date(diagram.lastModified).toLocaleString()
+                : "",
+            );
+            setSaveState(diagram.lastModified ? State.SAVED : State.NONE);
+            lastSavedSnapshotRef.current = buildDiagramSnapshot({
+              database: diagramDatabase,
+              title: diagram.name,
+              gistId: diagram.gistId,
+              loadedFromGistId: diagram.loadedFromGistId,
+              tables: normalizedTables,
+              relationships: diagram.references,
+              notes: diagram.notes,
+              areas: diagram.areas,
+              knownSubjectAreas: diagram.modelSubjectAreas ?? [],
+              transform: { pan: diagram.pan, zoom: diagram.zoom },
+              types: nextTypes,
+              enums: nextEnums,
+            });
             navigate(`/editor/diagrams/${diagram.diagramId}`, {
               replace: true,
             });
           } else {
-            if (selectedDb === "") setShowSelectDbModal(true);
+            setLastSaved("");
+            setSaveState(State.NONE);
+            setShowSelectDbModal(true);
           }
         })
         .catch((error) => {
@@ -231,15 +330,32 @@ export default function WorkSpace() {
 
       if (!diagram) return;
 
-      if (diagram.database) {
-        setDatabase(diagram.database);
-      } else {
-        setDatabase(DB.GENERIC);
-      }
+      const diagramDatabase = diagram.database || DB.GENERIC;
+      const normalizedTables = normalizeTablesMetadata(diagram.tables);
+      const nextTypes =
+        databases[diagramDatabase].hasTypes && diagram.types
+          ? diagram.types.map((t) =>
+              t.id
+                ? t
+                : {
+                    ...t,
+                    id: nanoid(),
+                    fields: t.fields.map((f) =>
+                      f.id ? f : { ...f, id: nanoid() },
+                    ),
+                  },
+            )
+          : [];
+      const nextEnums =
+        databases[diagramDatabase].hasEnums && diagram.enums
+          ? diagram.enums.map((e) => (!e.id ? { ...e, id: nanoid() } : e))
+          : [];
+
+      setDatabase(diagramDatabase);
       setGistId(diagram.gistId);
       setLoadedFromGistId(diagram.loadedFromGistId);
       setTitle(diagram.name);
-      setTables(normalizeTablesMetadata(diagram.tables));
+      setTables(normalizedTables);
       setRelationships(diagram.references);
       setAreas(diagram.areas);
       setNotes(diagram.notes);
@@ -250,30 +366,26 @@ export default function WorkSpace() {
       });
       setUndoStack([]);
       setRedoStack([]);
-      if (databases[database].hasTypes) {
-        if (diagram.types) {
-          setTypes(
-            diagram.types.map((t) =>
-              t.id
-                ? t
-                : {
-                    ...t,
-                    id: nanoid(),
-                    fields: t.fields.map((f) =>
-                      f.id ? f : { ...f, id: nanoid() },
-                    ),
-                  },
-            ),
-          );
-        } else {
-          setTypes([]);
-        }
-      }
-      if (databases[database].hasEnums) {
-        setEnums(
-          diagram.enums.map((e) => (!e.id ? { ...e, id: nanoid() } : e)) ?? [],
-        );
-      }
+      setTypes(nextTypes);
+      setEnums(nextEnums);
+      setLastSaved(
+        diagram.lastModified ? new Date(diagram.lastModified).toLocaleString() : "",
+      );
+      setSaveState(diagram.lastModified ? State.SAVED : State.NONE);
+      lastSavedSnapshotRef.current = buildDiagramSnapshot({
+        database: diagramDatabase,
+        title: diagram.name,
+        gistId: diagram.gistId,
+        loadedFromGistId: diagram.loadedFromGistId,
+        tables: normalizedTables,
+        relationships: diagram.references,
+        notes: diagram.notes,
+        areas: diagram.areas,
+        knownSubjectAreas: diagram.modelSubjectAreas ?? [],
+        transform: { pan: diagram.pan, zoom: diagram.zoom },
+        types: nextTypes,
+        enums: nextEnums,
+      });
     };
 
     const loadTemplate = async (id) => {
@@ -283,13 +395,29 @@ export default function WorkSpace() {
         .first();
 
       if (template) {
-        if (template.database) {
-          setDatabase(template.database);
-        } else {
-          setDatabase(DB.GENERIC);
-        }
-        setTitle(template.title);
+        const templateDatabase = template.database || DB.GENERIC;
         const normalizedTables = normalizeTablesMetadata(template.tables);
+        const nextTypes =
+          databases[templateDatabase].hasTypes && template.types
+            ? template.types.map((t) =>
+                t.id
+                  ? t
+                  : {
+                      ...t,
+                      id: nanoid(),
+                      fields: t.fields.map((f) =>
+                        f.id ? f : { ...f, id: nanoid() },
+                      ),
+                    },
+              )
+            : [];
+        const nextEnums =
+          databases[templateDatabase].hasEnums && template.enums
+            ? template.enums.map((e) => (!e.id ? { ...e, id: nanoid() } : e))
+            : [];
+
+        setDatabase(templateDatabase);
+        setTitle(template.title);
         setTables(normalizedTables);
         setRelationships(template.relationships);
         setAreas(template.subjectAreas);
@@ -301,33 +429,26 @@ export default function WorkSpace() {
         });
         setUndoStack([]);
         setRedoStack([]);
-        if (databases[database].hasTypes) {
-          if (template.types) {
-            setTypes(
-              template.types.map((t) =>
-                t.id
-                  ? t
-                  : {
-                      ...t,
-                      id: nanoid(),
-                      fields: t.fields.map((f) =>
-                        f.id ? f : { ...f, id: nanoid() },
-                      ),
-                    },
-              ),
-            );
-          } else {
-            setTypes([]);
-          }
-        }
-        if (databases[database].hasEnums) {
-          setEnums(
-            template.enums.map((e) => (!e.id ? { ...e, id: nanoid() } : e)) ??
-              [],
-          );
-        }
+        setTypes(nextTypes);
+        setEnums(nextEnums);
+        setLastSaved("");
+        setSaveState(State.NONE);
+        lastSavedSnapshotRef.current = buildDiagramSnapshot({
+          database: templateDatabase,
+          title: template.title,
+          tables: normalizedTables,
+          relationships: template.relationships,
+          notes: template.notes,
+          areas: template.subjectAreas,
+          knownSubjectAreas: template.modelSubjectAreas ?? [],
+          transform: { zoom: 1, pan: { x: 0, y: 0 } },
+          types: nextTypes,
+          enums: nextEnums,
+        });
       } else {
-        if (selectedDb === "") setShowSelectDbModal(true);
+        setLastSaved("");
+        setSaveState(State.NONE);
+        setShowSelectDbModal(true);
       }
     };
 
@@ -348,10 +469,9 @@ export default function WorkSpace() {
         setAreas(parsedDiagram.subjectAreas);
         setImportedSubjectAreas(parsedDiagram.modelSubjectAreas ?? []);
         setTransform(parsedDiagram.transform);
-        if (databases[parsedDiagram.database].hasTypes) {
-          if (parsedDiagram.types) {
-            setTypes(
-              parsedDiagram.types.map((t) =>
+        const nextTypes =
+          databases[parsedDiagram.database].hasTypes && parsedDiagram.types
+            ? parsedDiagram.types.map((t) =>
                 t.id
                   ? t
                   : {
@@ -361,19 +481,32 @@ export default function WorkSpace() {
                         f.id ? f : { ...f, id: nanoid() },
                       ),
                     },
-              ),
-            );
-          } else {
-            setTypes([]);
-          }
-        }
-        if (databases[parsedDiagram.database].hasEnums) {
-          setEnums(
-            parsedDiagram.enums.map((e) =>
-              !e.id ? { ...e, id: nanoid() } : e,
-            ) ?? [],
-          );
-        }
+              )
+            : [];
+        const nextEnums =
+          databases[parsedDiagram.database].hasEnums && parsedDiagram.enums
+            ? parsedDiagram.enums.map((e) =>
+                !e.id ? { ...e, id: nanoid() } : e,
+              )
+            : [];
+        setTypes(nextTypes);
+        setEnums(nextEnums);
+        setLastSaved("");
+        setSaveState(State.NONE);
+        lastSavedSnapshotRef.current = buildDiagramSnapshot({
+          database: parsedDiagram.database,
+          title: parsedDiagram.title,
+          gistId: shareId,
+          loadedFromGistId: shareId,
+          tables: normalizedTables,
+          relationships: parsedDiagram.relationships,
+          notes: parsedDiagram.notes,
+          areas: parsedDiagram.subjectAreas,
+          knownSubjectAreas: parsedDiagram.modelSubjectAreas ?? [],
+          transform: parsedDiagram.transform,
+          types: nextTypes,
+          enums: nextEnums,
+        });
         if (diagramId) {
           navigate(`/editor/diagrams/${diagramId}`, {
             replace: true,
@@ -385,7 +518,6 @@ export default function WorkSpace() {
       }
     };
 
-    const shareId = searchParams.get("shareId");
     if (shareId) {
       const existingDiagram = await db.diagrams.get({
         loadedFromGistId: shareId,
@@ -420,11 +552,9 @@ export default function WorkSpace() {
     setTypes,
     setDatabase,
     setImportedSubjectAreas,
-    database,
     setEnums,
-    selectedDb,
     setSaveState,
-    searchParams,
+    shareId,
     navigate,
     isDiagram,
     isTemplate,
@@ -438,29 +568,17 @@ export default function WorkSpace() {
   };
 
   useEffect(() => {
-    if (
-      tables?.length === 0 &&
-      areas?.length === 0 &&
-      notes?.length === 0 &&
-      types?.length === 0
-    )
-      return;
+    if (!settings.autosave || layout.readOnly) return;
 
-    if (settings.autosave) {
-      setSaveState(State.SAVING);
-    }
+    if (serializeDiagram() === lastSavedSnapshotRef.current) return;
+
+    setSaveState((currentState) =>
+      currentState === State.SAVING ? currentState : State.SAVING,
+    );
   }, [
-    undoStack,
-    redoStack,
     settings.autosave,
-    tables?.length,
-    areas?.length,
-    notes?.length,
-    types?.length,
-    relationships?.length,
-    transform.zoom,
-    title,
-    gistId,
+    layout.readOnly,
+    serializeDiagram,
     setSaveState,
   ]);
 
@@ -475,7 +593,6 @@ export default function WorkSpace() {
   useEffect(() => {
     document.title = "Editor | drawDB";
 
-    clearFilters();
     load();
   }, [load]);
 

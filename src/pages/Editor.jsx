@@ -25,7 +25,9 @@ export default function Editor() {
                 <TypesContextProvider>
                   <EnumsContextProvider>
                     <TablesContextProvider>
-                      <MetadataBridge />
+                      <SaveStateContextProvider>
+                        <MetadataBridge />
+                      </SaveStateContextProvider>
                     </TablesContextProvider>
                   </EnumsContextProvider>
                 </TypesContextProvider>
@@ -43,9 +45,7 @@ function MetadataBridge() {
 
   return (
     <MetadataContextProvider tables={tables}>
-      <SaveStateContextProvider>
-        <WorkSpace />
-      </SaveStateContextProvider>
+      <WorkSpace />
     </MetadataContextProvider>
   );
 }

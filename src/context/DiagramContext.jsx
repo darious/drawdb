@@ -1,4 +1,4 @@
-import { createContext, useState } from "react";
+import { createContext, useCallback, useState } from "react";
 import { Action, DB, ObjectType, defaultBlue } from "../data/constants";
 import { useTransform, useUndoRedo, useSelect } from "../hooks";
 import { Toast } from "@douyinfe/semi-ui";
@@ -26,12 +26,12 @@ export default function DiagramContextProvider({ children }) {
   const { setUndoStack, setRedoStack } = useUndoRedo();
   const { selectedElement, setSelectedElement } = useSelect();
 
-  const setRelationships = (value) => {
+  const setRelationships = useCallback((value) => {
     setRelationshipsState((prev) => {
       const nextValue = typeof value === "function" ? value(prev) : value;
       return normalizeRelationships(nextValue);
     });
-  };
+  }, []);
 
   const addTable = (data, addToHistory = true) => {
     const id = nanoid();
