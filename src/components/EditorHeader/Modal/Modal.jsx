@@ -11,6 +11,7 @@ import {
   useDiagram,
   useEnums,
   useMetadata,
+  useNavigateWithParams,
   useNotes,
   useSettings,
   useTransform,
@@ -33,7 +34,7 @@ import Open from "./Open";
 import Rename from "./Rename";
 import SetTableWidth from "./SetTableWidth";
 import Share from "./Share";
-import { useNavigate } from "react-router-dom";
+import { mergeCustomTypes } from "../../../utils/customTypes";
 
 const extensionToLanguage = {
   md: "markdown",
@@ -80,7 +81,7 @@ export default function Modal({
   const [selectedTemplateId, setSelectedTemplateId] = useState(-1);
   const [selectedDiagramId, setSelectedDiagramId] = useState(0);
   const [saveAsTitle, setSaveAsTitle] = useState(title);
-  const navigate = useNavigate();
+  const navigate = useNavigateWithParams();
 
   const overwriteDiagram = () => {
     const targetDatabase = importData.database ?? database;
@@ -96,6 +97,9 @@ export default function Modal({
     }
     setEnums(databases[targetDatabase].hasEnums ? importData.enums ?? [] : []);
     setTypes(databases[targetDatabase].hasTypes ? importData.types ?? [] : []);
+    if (importData.customTypes) {
+      mergeCustomTypes(importData.customTypes);
+    }
   };
 
   const parseSQLAndLoadDiagram = () => {
@@ -329,7 +333,7 @@ export default function Modal({
     <SemiUIModal
       style={isRtl(i18n.language) ? { direction: "rtl" } : {}}
       title={getModalTitle(modal)}
-      visible={modal !== MODAL.NONE}
+      visible={modal !== MODAL.NONE && modal !== MODAL.CONFIG_CUSTOM_TYPES}
       onOk={getModalOnOk}
       afterClose={() => {
         setExportData(() => ({

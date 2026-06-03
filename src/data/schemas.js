@@ -45,6 +45,7 @@ export const tableSchema = {
     subjectArea: { type: "string" },
     locked: { type: "boolean" },
     hidden: { type: "boolean" },
+    collapsed: { type: "boolean" },
     indices: {
       type: "array",
       items: {
@@ -94,6 +95,7 @@ export const noteSchema = {
     content: { type: "string" },
     color: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" },
     height: { type: "number" },
+    width: { type: "number" },
     locked: { type: "boolean" },
   },
   required: ["id", "x", "y", "title", "content", "color", "height"],
@@ -134,6 +136,15 @@ export const enumSchema = {
       items: { type: "string" },
     },
   },
+};
+
+export const customTypeEntrySchema = {
+  type: "object",
+  properties: {
+    type: { type: "string", minLength: 1 },
+    color: { type: "string" },
+  },
+  required: ["type", "color"],
 };
 
 export const jsonSchema = {
@@ -206,6 +217,7 @@ export const jsonSchema = {
     },
   },
   required: ["tables", "relationships", "notes", "subjectAreas"],
+  additionalProperties: true,
 };
 
 export const ddbSchema = {

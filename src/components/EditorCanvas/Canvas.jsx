@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Slot } from "../../context/ExtensionsContext";
 import {
   Action,
   Cardinality,
@@ -26,6 +27,7 @@ import {
   useNotes,
   useLayout,
   useSaveState,
+  useCollab,
 } from "../../hooks";
 import { useTranslation } from "react-i18next";
 import { useEventListener } from "usehooks-ts";
@@ -78,6 +80,32 @@ export default function Canvas() {
     endX: 0,
     endY: 0,
   });
+  const { emitAwareness } = useCollab();
+  const lastLinkingRef = useRef(false);
+
+  useEffect(() => {
+    if (linking) {
+      emitAwareness({
+        linking: {
+          startX: linkingLine.startX,
+          startY: linkingLine.startY,
+          endX: linkingLine.endX,
+          endY: linkingLine.endY,
+        },
+      });
+      lastLinkingRef.current = true;
+    } else if (lastLinkingRef.current) {
+      emitAwareness({ linking: null });
+      lastLinkingRef.current = false;
+    }
+  }, [
+    linking,
+    linkingLine.startX,
+    linkingLine.startY,
+    linkingLine.endX,
+    linkingLine.endY,
+    emitAwareness,
+  ]);
   const [hoveredTable, setHoveredTable] = useState({
     tableId: null,
     fieldId: null,
@@ -148,6 +176,7 @@ export default function Canvas() {
           table,
           settings.tableWidth,
           settings.showComments,
+          relationships,
         ),
       };
       if (shouldAddElement(tableRect, element)) {
@@ -789,6 +818,7 @@ export default function Canvas() {
               className="pointer-events-none touch-none"
             />
           )}
+          <Slot name="svg-overlay" />
           {notes.map((n) => (
             <Note
               key={n.id}

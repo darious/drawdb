@@ -6,12 +6,13 @@ import { useTranslation } from "react-i18next";
 import { SideSheet } from "@douyinfe/semi-ui";
 import RelationshipInfo from "../EditorSidePanel/RelationshipsTab/RelationshipInfo";
 import { getPrimaryRelationshipPair } from "../../utils/relationships";
+import { getVisibleFieldIndex, getVisibleFields } from "../../utils/utils";
 
 const labelFontSize = 16;
 
 export default function Relationship({ data, visibleTableIds }) {
   const { settings } = useSettings();
-  const { tables } = useDiagram();
+  const { tables, relationships } = useDiagram();
   const { layout } = useLayout();
   const { selectedElement, setSelectedElement } = useSelect();
   const { t } = useTranslation();
@@ -32,21 +33,34 @@ export default function Relationship({ data, visibleTableIds }) {
     )
       return null;
 
+    const startFields = getVisibleFields(startTable, relationships);
+    const endFields = getVisibleFields(endTable, relationships);
+
     return {
-      startFieldIndex: startTable.fields.findIndex(
-        (f) => f.id === primaryPair.startFieldId,
+      startFieldIndex: getVisibleFieldIndex(
+        startTable,
+        primaryPair.startFieldId,
+        relationships,
       ),
-      endFieldIndex: endTable.fields.findIndex(
-        (f) => f.id === primaryPair.endFieldId,
+      endFieldIndex: getVisibleFieldIndex(
+        endTable,
+        primaryPair.endFieldId,
+        relationships,
       ),
       startTable: {
         x: startTable.x,
         y: startTable.y,
         comment: startTable.comment,
+        fields: startFields,
       },
-      endTable: { x: endTable.x, y: endTable.y, comment: endTable.comment },
+      endTable: {
+        x: endTable.x,
+        y: endTable.y,
+        comment: endTable.comment,
+        fields: endFields,
+      },
     };
-  }, [tables, data, visibleTableIds]);
+  }, [tables, relationships, data, visibleTableIds]);
 
   const pathRef = useRef();
   const labelRef = useRef();
@@ -134,7 +148,12 @@ export default function Relationship({ data, visibleTableIds }) {
       <g className="select-none group" onDoubleClick={edit}>
         {/* invisible wider path for better hover ux */}
         <path
-          d={calcPath(pathValues, settings.tableWidth, 1, settings.showComments)}
+          d={calcPath(
+            pathValues,
+            settings.tableWidth,
+            1,
+            settings.showComments,
+          )}
           fill="none"
           stroke="transparent"
           strokeWidth={12}
@@ -142,7 +161,12 @@ export default function Relationship({ data, visibleTableIds }) {
         />
         <path
           ref={pathRef}
-          d={calcPath(pathValues, settings.tableWidth, 1, settings.showComments)}
+          d={calcPath(
+            pathValues,
+            settings.tableWidth,
+            1,
+            settings.showComments,
+          )}
           className="relationship-path"
           fill="none"
           cursor="pointer"

@@ -1,17 +1,17 @@
 import { useContext, useState } from "react";
+import { Slot, useExtensions } from "../../context/ExtensionsContext";
+import { createPortal } from "react-dom";
 import {
   IconCaretdown,
   IconChevronRight,
   IconChevronLeft,
-  IconChevronUp,
-  IconChevronDown,
   IconSaveStroked,
   IconUndo,
   IconRedo,
   IconEdit,
   IconShareStroked,
 } from "@douyinfe/semi-icons";
-import { Link, useMatch, useNavigate, useParams } from "react-router-dom";
+import { Link, useMatch, useParams } from "react-router-dom";
 import icon from "../../assets/icon_dark_64.png";
 import {
   Button,
@@ -64,6 +64,7 @@ import {
   useAreas,
   useEnums,
   useFullscreen,
+  useNavigateWithParams,
 } from "../../hooks";
 import { enterFullscreen, exitFullscreen } from "../../utils/fullscreen";
 import { dataURItoBlob } from "../../utils/utils";
@@ -89,8 +90,15 @@ import { deleteFromCache, STORAGE_KEY } from "../../utils/cache";
 import { useLiveQuery } from "dexie-react-hooks";
 import { DateTime } from "luxon";
 import { exportDiagramAsYaml } from "../../lib/model/yaml-export";
+import ConfigureCustomTypes from "./ConfigureCustomTypes";
 
-export default function ControlPanel({ title, setTitle, lastSaved }) {
+export default function ControlPanel({
+  title,
+  setTitle,
+  lastSaved,
+  setLastSaved,
+  toolbarContainer,
+}) {
   const { id: diagramId } = useParams();
 
   const [modal, setModal] = useState(MODAL.NONE);
@@ -102,6 +110,14 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
     filename: `${title}_${new Date().toISOString()}`,
     extension: "",
   });
+
+  const openExportModal = (modalType) => {
+    setExportData((prev) => ({
+      ...prev,
+      filename: `${title}_${new Date().toISOString()}`,
+    }));
+    setModal(modalType);
+  };
   const [importFrom, setImportFrom] = useState(IMPORT_FROM.JSON);
   const { saveState, setSaveState } = useSaveState();
   const { layout, setLayout } = useLayout();
@@ -132,10 +148,8 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
   const { t, i18n } = useTranslation();
   const { version, gistId, setGistId } = useContext(IdContext);
   const isTemplate = useMatch("/editor/templates/:id");
-  const navigate = useNavigate();
-
-  const invertLayout = (component) =>
-    setLayout((prev) => ({ ...prev, [component]: !prev[component] }));
+  const navigate = useNavigateWithParams();
+  const extensions = useExtensions();
 
   const undo = () => {
     if (undoStack.length === 0) return;
@@ -532,7 +546,12 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
       minMaxXY.maxY = Math.max(
         minMaxXY.maxY,
         table.y +
-          getTableHeight(table, settings.tableWidth, settings.showComments),
+          getTableHeight(
+            table,
+            settings.tableWidth,
+            settings.showComments,
+            relationships,
+          ),
       );
     });
 
@@ -752,7 +771,47 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
   const toggleDBMLEditor = () => {
     setLayout((prev) => ({ ...prev, dbmlEditor: !prev.dbmlEditor }));
   };
-  const save = () => setSaveState(State.SAVING);
+  const save = async () => {
+    if (typeof extensions.cloudSave === "function") {
+      // TODO: dont have blank here have null
+      const isNew = diagramId === 'blank';
+      const newId = isNew ? crypto.randomUUID() : diagramId;
+      const diagramData = {
+        diagramId: newId,
+        database,
+        name: title,
+        gistId: gistId ?? "",
+        lastModified: new Date(),
+        tables,
+        references: relationships,
+        notes,
+        areas,
+        pan: transform.pan,
+        zoom: transform.zoom,
+        ...(databases[database].hasEnums && { enums }),
+        ...(databases[database].hasTypes && { types }),
+      };
+      try {
+        await extensions.cloudSave(diagramData, { isNew });
+        if (isNew) {
+          navigate(`/editor/diagrams/${newId}`, { replace: true });
+        }
+        setSaveState(State.SAVED);
+        if (typeof setLastSaved === "function") {
+          setLastSaved(new Date().toLocaleString());
+        }
+      } catch (err) {
+        if (err?.response?.status === 402) {
+          setSaveState(State.NONE);
+          navigate("/checkout?tier=solo_pro");
+          return;
+        }
+        setSaveState(State.ERROR);
+      }
+      return;
+    }
+    setSaveState(State.SAVING);
+  };
   const recentlyOpenedDiagrams = useLiveQuery(() =>
     db.diagrams.orderBy("lastModified").reverse().limit(10).toArray(),
   );
@@ -845,24 +904,29 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
           message: t("are_you_sure_delete_diagram"),
         },
         function: async () => {
-          await db.diagrams
-            .where("diagramId")
-            .equals(diagramId)
-            .delete()
-            .then(() => {
-              setTitle("Untitled diagram");
-              setTables([]);
-              setRelationships([]);
-              setAreas([]);
-              setNotes([]);
-              setTypes([]);
-              setEnums([]);
-              setUndoStack([]);
-              setRedoStack([]);
-              setGistId("");
-              navigate("/editor/templates/blank", { replace: true });
-            })
-            .catch(() => Toast.error(t("oops_smth_went_wrong")));
+          try {
+            if (typeof extensions.cloudDelete === "function") {
+              await extensions.cloudDelete(diagramId);
+            } else {
+              await db.diagrams
+                .where("diagramId")
+                .equals(diagramId)
+                .delete();
+            }
+            setTitle("Untitled diagram");
+            setTables([]);
+            setRelationships([]);
+            setAreas([]);
+            setNotes([]);
+            setTypes([]);
+            setEnums([]);
+            setUndoStack([]);
+            setRedoStack([]);
+            setGistId("");
+            navigate("/editor/templates/blank", { replace: true });
+          } catch {
+            Toast.error(t("oops_smth_went_wrong"));
+          }
         },
       },
       import_from: {
@@ -960,7 +1024,7 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
             {
               name: "MySQL",
               function: () => {
-                setModal(MODAL.CODE);
+                openExportModal(MODAL.CODE);
                 const src = jsonToMySQL({
                   tables: tables,
                   references: relationships,
@@ -977,7 +1041,7 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
             {
               name: "PostgreSQL",
               function: () => {
-                setModal(MODAL.CODE);
+                openExportModal(MODAL.CODE);
                 const src = jsonToPostgreSQL({
                   tables: tables,
                   references: relationships,
@@ -994,7 +1058,7 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
             {
               name: "SQLite",
               function: () => {
-                setModal(MODAL.CODE);
+                openExportModal(MODAL.CODE);
                 const src = jsonToSQLite({
                   tables: tables,
                   references: relationships,
@@ -1011,7 +1075,7 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
             {
               name: "MariaDB",
               function: () => {
-                setModal(MODAL.CODE);
+                openExportModal(MODAL.CODE);
                 const src = jsonToMariaDB({
                   tables: tables,
                   references: relationships,
@@ -1028,7 +1092,7 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
             {
               name: "MSSQL",
               function: () => {
-                setModal(MODAL.CODE);
+                openExportModal(MODAL.CODE);
                 const src = jsonToSQLServer({
                   tables: tables,
                   references: relationships,
@@ -1046,7 +1110,7 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
               label: "Beta",
               name: "Oracle",
               function: () => {
-                setModal(MODAL.CODE);
+                openExportModal(MODAL.CODE);
                 const src = jsonToOracleSQL({
                   tables: tables,
                   references: relationships,
@@ -1064,7 +1128,7 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
         }),
         function: () => {
           if (database === DB.GENERIC) return;
-          setModal(MODAL.CODE);
+          openExportModal(MODAL.CODE);
           const src = exportSQL({
             tables: tables,
             references: relationships,
@@ -1093,7 +1157,7 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
                   extension: "png",
                 }));
               });
-              setModal(MODAL.IMG);
+              openExportModal(MODAL.IMG);
             },
           },
           {
@@ -1108,7 +1172,7 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
                   }));
                 },
               );
-              setModal(MODAL.IMG);
+              openExportModal(MODAL.IMG);
             },
           },
           {
@@ -1124,13 +1188,13 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
                   }));
                 },
               );
-              setModal(MODAL.IMG);
+              openExportModal(MODAL.IMG);
             },
           },
           {
             name: "JSON",
             function: () => {
-              setModal(MODAL.CODE);
+              openExportModal(MODAL.CODE);
               const result = JSON.stringify(
                 {
                   tables: tables,
@@ -1173,7 +1237,7 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
           {
             name: "DBML",
             function: () => {
-              setModal(MODAL.CODE);
+              openExportModal(MODAL.CODE);
               const result = toDBML({
                 tables,
                 relationships,
@@ -1191,6 +1255,7 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
             name: "PDF",
             function: () => {
               const canvas = document.getElementById("canvas");
+              const filename = `${title}_${new Date().toISOString()}`;
               toJpeg(canvas).then(function (dataUrl) {
                 const doc = new jsPDF("l", "px", [
                   canvas.offsetWidth,
@@ -1204,14 +1269,14 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
                   canvas.offsetWidth,
                   canvas.offsetHeight,
                 );
-                doc.save(`${exportData.filename}.pdf`);
+                doc.save(`${filename}.pdf`);
               });
             },
           },
           {
             name: "Mermaid",
             function: () => {
-              setModal(MODAL.CODE);
+              openExportModal(MODAL.CODE);
               const result = jsonToMermaid({
                 tables: tables,
                 relationships: relationships,
@@ -1230,7 +1295,7 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
           {
             name: "Markdown",
             function: () => {
-              setModal(MODAL.CODE);
+              openExportModal(MODAL.CODE);
               const result = jsonToDocumentation({
                 tables: tables,
                 relationships: relationships,
@@ -1514,6 +1579,10 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
         function: () => setModal(MODAL.TABLE_WIDTH),
         disabled: layout.readOnly,
       },
+      configure_custom_types: {
+        function: () => setModal(MODAL.CONFIG_CUSTOM_TYPES),
+        disabled: layout.readOnly,
+      },
       language: {
         function: () => setModal(MODAL.LANGUAGE),
       },
@@ -1598,24 +1667,30 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
       <div>
         {layout.header && (
           <div
-            className="flex justify-between items-center me-7"
+            className="flex justify-between items-center border-b border-color pb-2"
             style={isRtl(i18n.language) ? { direction: "rtl" } : {}}
           >
             {header()}
-            {!isTemplate && (
-              <Button
-                type="primary"
-                className="!text-base me-2 !pe-6 !ps-5 !py-[18px] !rounded-md"
-                size="default"
-                icon={<IconShareStroked />}
-                onClick={() => setModal(MODAL.SHARE)}
-              >
-                {t("share")}
-              </Button>
-            )}
+            <div className="flex items-center gap-2 me-7">
+              <Slot name="header-actions-start" />
+              {!isTemplate && (
+                <Button
+                  type="primary"
+                  className="!text-base !pe-6 !ps-5 !py-[18px] !rounded-md"
+                  size="default"
+                  icon={<IconShareStroked />}
+                  onClick={() => setModal(MODAL.SHARE)}
+                >
+                  {t("share")}
+                </Button>
+              )}
+              <Slot name="header-actions-end" />
+            </div>
           </div>
         )}
-        {layout.toolbar && toolbar()}
+        {layout.toolbar &&
+          toolbarContainer &&
+          createPortal(toolbar(), toolbarContainer)}
       </div>
       <Modal
         modal={modal}
@@ -1633,13 +1708,17 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
         setTitle={setTitle}
         onClose={() => setSidesheet(SIDESHEET.NONE)}
       />
+      <ConfigureCustomTypes
+        open={modal === MODAL.CONFIG_CUSTOM_TYPES}
+        onClose={() => setModal(MODAL.NONE)}
+      />
     </>
   );
 
   function toolbar() {
     return (
       <div
-        className="py-1.5 px-5 flex justify-between items-center rounded-xl my-1 sm:mx-1 xl:mx-6 select-none overflow-hidden toolbar-theme"
+        className="py-1.5 px-3 flex items-center gap-1 rounded-xl select-none overflow-hidden toolbar-theme shadow-lg"
         style={isRtl(i18n.language) ? { direction: "rtl" } : {}}
       >
         <div className="flex justify-start items-center">
@@ -1803,12 +1882,6 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
             </button>
           </Tooltip>
         </div>
-        <button
-          onClick={() => invertLayout("header")}
-          className="flex items-center"
-        >
-          {layout.header ? <IconChevronUp /> : <IconChevronDown />}
-        </button>
       </div>
     );
   }
@@ -1872,7 +1945,7 @@ export default function ControlPanel({ title, setTitle, lastSaved }) {
                 }}
                 onClick={!layout.readOnly && (() => setModal(MODAL.RENAME))}
               >
-                <span>{(isTemplate ? "Templates/" : "Diagrams/") + title}</span>
+                <span>{(isTemplate ? "Templates / " : "Diagrams / ") + title}</span>
                 {version && (
                   <Tag className="mt-1" color="blue" size="small">
                     {version.substring(0, 7)}
