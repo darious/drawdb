@@ -170,6 +170,15 @@ const defaultTypesBase = {
     defaultSize: 65535,
     hasQuotes: true,
   },
+  STRING: {
+    type: "STRING",
+    color: stringColor,
+    checkDefault: (field) => true,
+    hasCheck: false,
+    isSized: false,
+    hasPrecision: false,
+    hasQuotes: true,
+  },
   TIME: {
     type: "TIME",
     color: dateColor,
