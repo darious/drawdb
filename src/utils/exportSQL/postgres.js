@@ -1,6 +1,11 @@
-import { escapeQuotes, exportFieldComment, parseDefault } from "./shared";
+import {
+  escapeQuotes,
+  exportFieldComment,
+  parseDefault,
+  uniqueConstraintClause,
+  getFkColumnNames,
+} from "./shared";
 import { dbToTypes } from "../../data/datatypes";
-import { getRelationshipFieldNames } from "../relationships";
 
 export function toPostgres(diagram) {
   const enumStatements = diagram.enums
@@ -60,6 +65,8 @@ export function toPostgres(diagram) {
             .join(", ")})`
         : "";
 
+      const uniqueClause = uniqueConstraintClause(table, (s) => `"${s}"`);
+
       const commentStatements = [
         table.comment?.trim()
           ? `COMMENT ON TABLE "${table.name}" IS '${escapeQuotes(table.comment)}';`
@@ -82,19 +89,29 @@ export function toPostgres(diagram) {
         )
         .join("\n");
 
-      return `CREATE TABLE IF NOT EXISTS "${table.name}" (\n${fieldDefinitions}${primaryKeyClause}${inheritsClause};\n\n${commentStatements}\n${indexStatements}`;
+      return `CREATE TABLE IF NOT EXISTS "${table.name}" (\n${fieldDefinitions}${primaryKeyClause}${uniqueClause}${inheritsClause};\n\n${commentStatements}\n${indexStatements}`;
     })
     .join("\n\n");
 
   const foreignKeyStatements = diagram.references
     .map((r) => {
-      const relFields = getRelationshipFieldNames(r, diagram.tables);
-      if (!relFields) return "";
+      const startTable = diagram.tables.find((t) => t.id === r.startTableId);
+      const endTable = diagram.tables.find((t) => t.id === r.endTableId);
 
-      return `ALTER TABLE "${relFields.startTable.name}"\nADD FOREIGN KEY(${relFields.pairs
-        .map((pair) => `"${pair.startFieldName}"`)
-        .join(", ")}) REFERENCES "${relFields.endTable.name}"(${relFields.pairs
-        .map((pair) => `"${pair.endFieldName}"`)
+      if (!startTable || !endTable) return "";
+
+      const { startColumns, endColumns } = getFkColumnNames(
+        r,
+        startTable,
+        endTable,
+      );
+      if (startColumns.some((c) => !c) || endColumns.some((c) => !c))
+        return "";
+
+      return `ALTER TABLE "${startTable.name}"\nADD FOREIGN KEY(${startColumns
+        .map((c) => `"${c}"`)
+        .join(", ")}) REFERENCES "${endTable.name}"(${endColumns
+        .map((c) => `"${c}"`)
         .join(", ")})\nON UPDATE ${r.updateConstraint.toUpperCase()} ON DELETE ${r.deleteConstraint.toUpperCase()};`;
     })
     .filter(Boolean)

@@ -1,8 +1,12 @@
-import { escapeQuotes, parseDefault } from "./shared";
+import {
+  escapeQuotes,
+  parseDefault,
+  uniqueConstraintClause,
+  getFkColumnNames,
+} from "./shared";
 
 import { dbToTypes } from "../../data/datatypes";
 import { DB } from "../../data/constants";
-import { getRelationshipFieldNames } from "../relationships";
 
 function parseType(field) {
   let res = field.type;
@@ -48,7 +52,7 @@ export function toMariaDB(diagram) {
                 .map((f) => `\`${f.name}\``)
                 .join(", ")})`
             : ""
-        }\n)${table.comment ? ` COMMENT='${escapeQuotes(table.comment)}'` : ""};${`\n${table.indices
+        }${uniqueConstraintClause(table, (s) => `\`${s}\``)}\n)${table.comment ? ` COMMENT='${escapeQuotes(table.comment)}'` : ""};${`\n${table.indices
           .map(
             (i) =>
               `\nCREATE ${i.unique ? "UNIQUE " : ""}INDEX \`${
@@ -61,13 +65,21 @@ export function toMariaDB(diagram) {
     )
     .join("\n")}\n${diagram.references
     .map((r) => {
-      const relFields = getRelationshipFieldNames(r, diagram.tables);
-      if (!relFields) return "";
+      const { name: startName, fields: startFields } = diagram.tables.find(
+        (t) => t.id === r.startTableId,
+      );
 
-      return `ALTER TABLE \`${relFields.startTable.name}\`\nADD FOREIGN KEY(${relFields.pairs
-        .map((pair) => `\`${pair.startFieldName}\``)
-        .join(", ")}) REFERENCES \`${relFields.endTable.name}\`(${relFields.pairs
-        .map((pair) => `\`${pair.endFieldName}\``)
+      const endTable = diagram.tables.find((t) => t.id === r.endTableId);
+      const { name: endName } = endTable;
+      const { startColumns, endColumns } = getFkColumnNames(
+        r,
+        { fields: startFields },
+        endTable,
+      );
+      return `ALTER TABLE \`${startName}\`\nADD FOREIGN KEY(${startColumns
+        .map((c) => `\`${c}\``)
+        .join(", ")}) REFERENCES \`${endName}\`(${endColumns
+        .map((c) => `\`${c}\``)
         .join(", ")})\nON UPDATE ${r.updateConstraint.toUpperCase()} ON DELETE ${r.deleteConstraint.toUpperCase()};`;
     })
     .join("\n")}`;

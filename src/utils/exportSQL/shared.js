@@ -1,8 +1,18 @@
-import { isFunction, isKeyword } from "../utils";
+import { isFunction, isKeyword, getRelationshipFields } from "../utils";
 
 import { DB } from "../../data/constants";
 import { dbToTypes } from "../../data/datatypes";
-import { getRelationshipFieldNames } from "../relationships";
+
+export function getFkColumnNames(relationship, startTable, endTable) {
+  const pairs = getRelationshipFields(relationship);
+  const startColumns = pairs.map(
+    (p) => startTable?.fields.find((f) => f.id === p.startFieldId)?.name,
+  );
+  const endColumns = pairs.map(
+    (p) => endTable?.fields.find((f) => f.id === p.endFieldId)?.name,
+  );
+  return { startColumns, endColumns };
+}
 
 export function parseDefault(field, database = DB.GENERIC) {
   if (
@@ -31,18 +41,40 @@ export function exportFieldComment(comment) {
     .join("");
 }
 
+export function uniqueConstraintClause(table, quote) {
+  const constraints = (table.uniqueConstraints || []).filter(
+    (uc) => Array.isArray(uc.fields) && uc.fields.length > 0,
+  );
+  if (constraints.length === 0) return "";
+
+  return (
+    ",\n" +
+    constraints
+      .map(
+        (uc) =>
+          `\tCONSTRAINT ${quote(uc.name)} UNIQUE (${uc.fields
+            .map((f) => quote(f))
+            .join(", ")})`,
+      )
+      .join(",\n")
+  );
+}
+
 export function getInlineFK(table, obj) {
   let fks = [];
   obj.references.forEach((r) => {
     if (r.startTableId === table.id) {
-      const relFields = getRelationshipFieldNames(r, obj.tables);
-      if (!relFields) return;
-
+      const endTable = obj.tables.find((t) => t.id === r.endTableId);
+      const { startColumns, endColumns } = getFkColumnNames(
+        r,
+        table,
+        endTable,
+      );
       fks.push(
-        `\tFOREIGN KEY (${relFields.pairs
-          .map((pair) => `"${pair.startFieldName}"`)
-          .join(", ")}) REFERENCES "${relFields.endTable.name}"(${relFields.pairs
-          .map((pair) => `"${pair.endFieldName}"`)
+        `\tFOREIGN KEY (${startColumns
+          .map((c) => `"${c}"`)
+          .join(", ")}) REFERENCES "${endTable?.name}"(${endColumns
+          .map((c) => `"${c}"`)
           .join(", ")})\n\tON UPDATE ${r.updateConstraint.toUpperCase()} ON DELETE ${r.deleteConstraint.toUpperCase()}`,
       );
     }

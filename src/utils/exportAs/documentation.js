@@ -1,7 +1,7 @@
 import { dbToTypes } from "../../data/datatypes";
 import { jsonToMermaid } from "./mermaid";
 import { databases } from "../../data/databases";
-import { getRelationshipPairs } from "../relationships";
+import { getRelationshipFields } from "../utils";
 
 function formatMarkdownTable(headers, rows) {
   const allRows = [headers, ...rows];
@@ -78,10 +78,22 @@ export function jsonToDocumentation(obj) {
           formatMarkdownTable(["Name", "Unique", "Fields"], indexRows);
       }
 
+      let uniqueConstraintsSection = "";
+      if ((table.uniqueConstraints || []).length > 0) {
+        const ucRows = table.uniqueConstraints.map((uc) => [
+          uc.name,
+          uc.fields.join(", "),
+        ]);
+        uniqueConstraintsSection =
+          "\n#### Unique constraints\n" +
+          formatMarkdownTable(["Name", "Fields"], ucRows);
+      }
+
       return (
         `### ${table.name}\n${table.comment ? table.comment : ""}\n` +
         `${fieldsTable} \n${enums.length > 0 ? "\n#### Enums\n" + enums : ""}\n` +
-        indexesSection
+        indexesSection +
+        uniqueConstraintsSection
       );
     })
     .join("\n");
@@ -91,7 +103,7 @@ export function jsonToDocumentation(obj) {
       .filter(
         (r) =>
           r.startTableId === table &&
-          getRelationshipPairs(r).some((pair) => pair.startFieldId === fieldId),
+          getRelationshipFields(r).some((p) => p.startFieldId === fieldId),
       )
       .map((rel) => rel.name);
   }

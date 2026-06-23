@@ -61,6 +61,20 @@ export const tableSchema = {
         required: ["name", "unique", "fields"],
       },
     },
+    uniqueConstraints: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          fields: {
+            type: "array",
+            items: { type: "string" },
+          },
+        },
+        required: ["name", "fields"],
+      },
+    },
     color: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" },
     inherits: {
       type: "array",
@@ -163,17 +177,6 @@ export const jsonSchema = {
           startFieldId: { type: ["integer", "string"] },
           endTableId: { type: ["integer", "string"] },
           endFieldId: { type: ["integer", "string"] },
-          columnPairs: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                startFieldId: { type: ["integer", "string"] },
-                endFieldId: { type: ["integer", "string"] },
-              },
-              required: ["startFieldId", "endFieldId"],
-            },
-          },
           name: { type: "string" },
           cardinality: { type: "string" },
           updateConstraint: { type: "string" },

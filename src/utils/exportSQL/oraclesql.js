@@ -1,6 +1,9 @@
 import { dbToTypes } from "../../data/datatypes";
-import { parseDefault } from "./shared";
-import { getRelationshipFieldNames } from "../relationships";
+import {
+  parseDefault,
+  uniqueConstraintClause,
+  getFkColumnNames,
+} from "./shared";
 
 export function toOracleSQL(diagram) {
   return `${diagram.tables
@@ -37,7 +40,7 @@ export function toOracleSQL(diagram) {
                 .map((f) => `"${f.name}"`)
                 .join(", ")})`
             : ""
-        }\n)${table.comment ? ` -- ${table.comment}` : ""};\n${`\n${table.indices
+        }${uniqueConstraintClause(table, (s) => `"${s}"`)}\n)${table.comment ? ` -- ${table.comment}` : ""};\n${`\n${table.indices
           .map(
             (i) =>
               `\nCREATE ${i.unique ? "UNIQUE " : ""}INDEX "${i.name}"\nON "${table.name}" (${i.fields
@@ -48,13 +51,20 @@ export function toOracleSQL(diagram) {
     )
     .join("\n")}\n${diagram.references
     .map((r) => {
-      const relFields = getRelationshipFieldNames(r, diagram.tables);
-      if (!relFields) return "";
-
-      return `ALTER TABLE "${relFields.startTable.name}"\nADD CONSTRAINT "${r.name}" FOREIGN KEY (${relFields.pairs
-        .map((pair) => `"${pair.startFieldName}"`)
-        .join(", ")}) REFERENCES "${relFields.endTable.name}" (${relFields.pairs
-        .map((pair) => `"${pair.endFieldName}"`)
+      const { name: startName, fields: startFields } = diagram.tables.find(
+        (t) => t.id === r.startTableId,
+      );
+      const endTable = diagram.tables.find((t) => t.id === r.endTableId);
+      const { name: endName } = endTable;
+      const { startColumns, endColumns } = getFkColumnNames(
+        r,
+        { fields: startFields },
+        endTable,
+      );
+      return `ALTER TABLE "${startName}"\nADD CONSTRAINT "${r.name}" FOREIGN KEY (${startColumns
+        .map((c) => `"${c}"`)
+        .join(", ")}) REFERENCES "${endName}" (${endColumns
+        .map((c) => `"${c}"`)
         .join(", ")})\nON UPDATE ${r.updateConstraint.toUpperCase()} ON DELETE ${r.deleteConstraint.toUpperCase()};`;
     })
     .join("\n")}`;

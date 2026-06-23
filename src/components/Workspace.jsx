@@ -98,6 +98,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [selectedDb, setSelectedDb] = useState("");
   const pendingNewIdRef = useRef(null);
+  const loadedIdRef = useRef(null);
   const { layout, setLayout } = useLayout();
   const { setImportedSubjectAreas, knownSubjectAreas } = useMetadata();
   const { settings } = useSettings();
@@ -304,6 +305,9 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
   ]);
 
   const load = useCallback(async () => {
+    const previousLoadedId = loadedIdRef.current;
+    loadedIdRef.current = loadedDiagramId ?? null;
+
     const loadLatestDiagram = async () => {
       await db.diagrams
         .orderBy("lastModified")
@@ -592,6 +596,25 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
     }
 
     if (!loadedDiagramId) {
+      if (cloudOnly) {
+        if (previousLoadedId != null) {
+          setTables([]);
+          setRelationships([]);
+          setAreas([]);
+          setNotes([]);
+          setTypes([]);
+          setEnums([]);
+          setUndoStack([]);
+          setRedoStack([]);
+          setTransform({ zoom: 1, pan: { x: 0, y: 0 } });
+          setTitle("Untitled diagram");
+          setGistId("");
+          setLoadedFromGistId("");
+          setLayout((prev) => ({ ...prev, readOnly: false }));
+        }
+        if (selectedDb === "") setShowSelectDbModal(true);
+        return;
+      }
       await loadLatestDiagram();
       return;
     }
@@ -625,6 +648,8 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
     isDiagram,
     isTemplate,
     loadedDiagramId,
+    cloudOnly,
+    selectedDb,
   ]);
 
   const returnToCurrentDiagram = async () => {

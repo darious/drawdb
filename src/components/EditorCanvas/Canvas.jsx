@@ -82,6 +82,7 @@ export default function Canvas() {
   });
   const { emitAwareness } = useCollab();
   const lastLinkingRef = useRef(false);
+  const rightClickPanned = useRef(false);
 
   useEffect(() => {
     if (linking) {
@@ -464,6 +465,7 @@ export default function Canvas() {
 
     const isMouseLeftButton = e.button === 0;
     const isMouseMiddleButton = e.button === 1;
+    const isMouseRightButton = e.button === 2;
 
     if (isMouseLeftButton) {
       setBulkSelectRect({
@@ -479,7 +481,8 @@ export default function Canvas() {
         handlePointerDownOnElement(e, elementPointerDown);
       }
       pointer.setStyle("crosshair");
-    } else if (isMouseMiddleButton) {
+    } else if (isMouseMiddleButton || isMouseRightButton) {
+      if (isMouseRightButton) rightClickPanned.current = false;
       setPanning({
         isPanning: true,
         panStart: transform.pan,
@@ -566,6 +569,7 @@ export default function Canvas() {
 
     if (panning.isPanning && didPan()) {
       setSaveState(State.SAVING);
+      if (e.button === 2) rightClickPanned.current = true;
     }
     setPanning((old) => ({ ...old, isPanning: false }));
     pointer.setStyle("default");
@@ -659,15 +663,15 @@ export default function Canvas() {
 
     const newRelationship = {
       ...linkingLine,
-      columnPairs: [
+      cardinality,
+      endTableId: hoveredTable.tableId,
+      endFieldId: hoveredTable.fieldId,
+      fields: [
         {
           startFieldId: linkingLine.startFieldId,
           endFieldId: hoveredTable.fieldId,
         },
       ],
-      cardinality,
-      endTableId: hoveredTable.tableId,
-      endFieldId: hoveredTable.fieldId,
       updateConstraint: Constraint.NONE,
       deleteConstraint: Constraint.NONE,
       name: `fk_${startTableName}_${startField.name}_${endTableName}`,
@@ -686,8 +690,6 @@ export default function Canvas() {
       e.preventDefault();
 
       if (e.ctrlKey || e.metaKey) {
-        // How "eager" the viewport is to
-        // center the cursor's coordinates
         const eagernessFactor = 0.05;
         setTransform((prev) => ({
           pan: {
@@ -716,7 +718,7 @@ export default function Canvas() {
         setTransform((prev) => ({
           ...prev,
           pan: {
-            x: prev.pan.x + e.deltaX / prev.zoom,
+            ...prev.pan,
             y: prev.pan.y + e.deltaY / prev.zoom,
           },
         }));
@@ -741,6 +743,12 @@ export default function Canvas() {
           onPointerMove={handlePointerMove}
           onPointerDown={handlePointerDown}
           onPointerUp={handlePointerUp}
+          onContextMenu={(e) => {
+            if (rightClickPanned.current) {
+              e.preventDefault();
+              rightClickPanned.current = false;
+            }
+          }}
           className="absolute w-full h-full touch-none"
           viewBox={`${viewBox.left} ${viewBox.top} ${viewBox.width} ${viewBox.height}`}
         >

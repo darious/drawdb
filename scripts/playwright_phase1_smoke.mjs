@@ -510,11 +510,19 @@ async function main() {
   await relationshipRow.click({ force: true });
   await compositePage.waitForTimeout(500);
 
-  const relationshipPanelText = await compositePage.locator("body").innerText();
+  let relationshipPanelText = await compositePage.locator("body").innerText();
   assert(
-    relationshipPanelText.includes("Column pairs:"),
-    "Composite relationship editor did not render the column-pairs section.",
+    relationshipPanelText.includes("Composite key"),
+    "Composite relationship editor did not render the composite-key section.",
   );
+
+  await compositePage
+    .getByText("Composite key", { exact: false })
+    .first()
+    .click({ force: true });
+  await compositePage.waitForTimeout(500);
+
+  relationshipPanelText = await compositePage.locator("body").innerText();
   assert(
     relationshipPanelText.includes("order_id") &&
       relationshipPanelText.includes("product_id"),

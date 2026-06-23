@@ -3,10 +3,7 @@ import {
   normalizeSubjectArea,
   normalizeTableMetadata,
 } from "../../utils/tableMetadata";
-import {
-  getRelationshipPairs,
-  normalizeRelationship,
-} from "../../utils/relationships";
+import { getRelationshipFields } from "../../utils/utils";
 
 function slugify(value, fallback) {
   const slug = `${value ?? ""}`
@@ -105,7 +102,7 @@ export function runtimeToCanonicalModel({
     .map((relationship) => {
       const fromTable = tableKeyById.get(relationship.startTableId);
       const toTable = tableKeyById.get(relationship.endTableId);
-      const pairs = getRelationshipPairs(relationship)
+      const pairs = getRelationshipFields(relationship)
         .map((pair) => ({
           fromColumn: fieldKeyByTableId
             .get(relationship.startTableId)
@@ -214,7 +211,7 @@ export function canonicalModelToRuntime(model) {
     const toColumns = Array.isArray(relationship.to_columns)
       ? relationship.to_columns
       : [relationship.to_column];
-    const columnPairs = fromColumns
+    const fields = fromColumns
       .map((fromColumn, index) => ({
         startFieldId: fieldIdByTableAndKey
           .get(relationship.from_table)
@@ -230,22 +227,22 @@ export function canonicalModelToRuntime(model) {
           pair.endFieldId !== undefined &&
           pair.endFieldId !== null,
       );
-    const primaryPair = columnPairs[0];
+    const primaryPair = fields[0];
 
-    return normalizeRelationship({
+    return {
       id: relationship.id,
       startTableId: tableIdByKey.get(relationship.from_table),
       startFieldId: primaryPair?.startFieldId,
       endTableId: tableIdByKey.get(relationship.to_table),
       endFieldId: primaryPair?.endFieldId,
-      columnPairs,
+      fields,
       name:
         relationship.name ||
         `${relationship.from_table}_${fromColumns[0]}_fk`,
       cardinality: relationship.relationship_type ?? Cardinality.MANY_TO_ONE,
       updateConstraint: relationship.update_constraint ?? Constraint.NONE,
       deleteConstraint: relationship.delete_constraint ?? Constraint.NONE,
-    });
+    };
   });
 
   return {

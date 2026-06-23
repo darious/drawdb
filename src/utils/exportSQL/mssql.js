@@ -1,8 +1,12 @@
-import { parseDefault, escapeQuotes } from "./shared";
+import {
+  parseDefault,
+  escapeQuotes,
+  uniqueConstraintClause,
+  getFkColumnNames,
+} from "./shared";
 
 import { dbToTypes } from "../../data/datatypes";
 import { DB } from "../../data/constants";
-import { getRelationshipFieldNames } from "../relationships";
 
 function generateAddExtendedPropertySQL(value, level1name, level2name = null) {
   if (!value || value.trim() === "") {
@@ -65,7 +69,9 @@ export function toMSSQL(diagram) {
               .join(", ")})`
           : "";
 
-      const createTableSql = `CREATE TABLE [${table.name}] (\n${fieldsSql}${primaryKeySql}\n);\nGO\n`;
+      const uniqueSql = uniqueConstraintClause(table, (s) => `[${s}]`);
+
+      const createTableSql = `CREATE TABLE [${table.name}] (\n${fieldsSql}${primaryKeySql}${uniqueSql}\n);\nGO\n`;
 
       const tableCommentSql = generateAddExtendedPropertySQL(
         table.comment,
@@ -95,16 +101,23 @@ export function toMSSQL(diagram) {
 
   const referencesSql = diagram.references
     .map((r) => {
-      const relFields = getRelationshipFieldNames(r, diagram.tables);
-      if (!relFields) return "";
+      const startTable = diagram.tables.find((t) => t.id === r.startTableId);
+      const endTable = diagram.tables.find((t) => t.id === r.endTableId);
 
-      return `\nALTER TABLE [${relFields.startTable.name}]
-ADD FOREIGN KEY(${relFields.pairs
-  .map((pair) => `[${pair.startFieldName}]`)
-  .join(", ")})
-REFERENCES [${relFields.endTable.name}](${relFields.pairs
-  .map((pair) => `[${pair.endFieldName}]`)
-  .join(", ")})
+      if (!startTable || !endTable) return "";
+
+      const { startColumns, endColumns } = getFkColumnNames(
+        r,
+        startTable,
+        endTable,
+      );
+
+      if (startColumns.some((c) => !c) || endColumns.some((c) => !c))
+        return "";
+
+      return `\nALTER TABLE [${startTable.name}]
+ADD FOREIGN KEY(${startColumns.map((c) => `[${c}]`).join(", ")})
+REFERENCES [${endTable.name}](${endColumns.map((c) => `[${c}]`).join(", ")})
 ON UPDATE ${r.updateConstraint.toUpperCase()} ON DELETE ${r.deleteConstraint.toUpperCase()};
 GO`;
     })

@@ -14,7 +14,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { fromDBML } from "../../../utils/importFrom/dbml";
 import { importDiagramFromYaml } from "../../../lib/model/yaml-import";
-import { getRelationshipPairs, normalizeRelationships } from "../../../utils/relationships";
+import { getRelationshipFields } from "../../../utils/utils";
 
 export default function ImportDiagram({
   setImportData,
@@ -74,8 +74,6 @@ export default function ImportDiagram({
       jsonObject.database = DB.GENERIC;
     }
 
-    jsonObject.relationships = normalizeRelationships(jsonObject.relationships ?? []);
-
     if (jsonObject.database !== database) {
       setError({
         type: STATUS.ERROR,
@@ -101,7 +99,7 @@ export default function ImportDiagram({
         return;
       }
 
-      const hasMissingPair = getRelationshipPairs(rel).some(
+      const hasMissingPair = getRelationshipFields(rel).some(
         (pair) =>
           !startTable.fields.find((f) => f.id === pair.startFieldId) ||
           !endTable.fields.find((f) => f.id === pair.endFieldId),
