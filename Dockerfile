@@ -2,7 +2,12 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+# Optionally trust a corporate proxy CA (e.g. Zscaler) during install.
+# Pass with: docker build --secret id=node_ca,src=./zscaler-root.pem ...
+# Harmless when the secret is not provided.
+RUN --mount=type=secret,id=node_ca \
+    if [ -f /run/secrets/node_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/node_ca; fi; \
+    npm ci
 COPY . .
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build

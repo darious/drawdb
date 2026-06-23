@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Local corporate proxy CA (Zscaler) for docker builds
+zscaler-root.pem
